@@ -1,10 +1,10 @@
 task: detect
 mode: train
-model: yolo26n.yaml
-data: coco8.,yaml
-epochs: 100
+model: yolo26n.pt
+data: Drone_Data/data.yaml
+epochs: 10
 time: null
-patience: 100
+patience: 15
 batch: 16
 imgsz: 640
 save: true
@@ -112,4 +112,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: tracktrack.yaml
-save_dir: C:\bigdata2026\Roboflow universe\runs\detect\train
+save_dir: C:\Users\Administrator\bigdata2026\AegisVision\runs\detect\train

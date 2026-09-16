@@ -50,3 +50,36 @@
 - Roboflow Universe: https://universe.roboflow.com
 - AI Hub 자율주행드론 비행 영상 데이터: https://www.aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&dataSetSn=190
 - GitHub Actions Quickstart: https://docs.github.com/en/actions/quickstart
+
+
+
+---
+
+## python 코드로 모델 로드 방법 익히기
+```
+model = YOLO("yolo26n.yaml")               # 빈 구조만 생성
+model = YOLO("yolo26n.pt")                 # 사전학습 가중치 로드
+model = YOLO("yolo26n.yaml").load("yolo26n.pt")  # 구조+가중치 결합
+```
+
+## 학습 실행
+```
+results = model.train(data="coco8.yaml", epochs=100, imgsz=640)
+```
+- 8장짜리 초소형 샘플 데이터셋으로 학습
+- runs/detect/train 폴더에 저장된 confusion matrix, loss/성능 그래프(results.png) 읽는 법 학습
+
+## 결과 해석
+- `confusion matrix` : 왼쪽 위부터 오른쪽 아래로 대각선이 찐하면 정답, 벗어나면 오류 
+- `loss/성능 그래프` : train loss는 계속 감소, val loss는 40 epoch 이후 오히려 증가하고 mAP도 급락 -> 과적합 val_loss가 올라가기 전에 멈추는 게 좋다는 판단 기준을 배움
+
+
+- YOLO	: 실제로 "학습을 수행"하는 주체 — 이미지 넣고, 모델 돌리고, 성능 숫자를 뽑아냄
+    - `python COCO8.py`로 실행
+- MLflow :	YOLO가 만들어낸 결과(설정값 + 성능 숫자 + 가중치 파일)를 기록 저장소에 쌓아두고, 여러 번의 실험을 비교·추적하게 해주는 도구
+    - `python MLflow.py` -> `mlflow ui --backend-store-uri sqlite:///mlflow.db`순서로 실행 (db형태로 저장이 되어서 이 코드로 실행)
+
+---
+1. Roboflow Universe에서 데이터 다운
+2. YOLO로 학습(`python drone_train.py`)
+3. 학습 중 멈추면 (`resume_train.py`)로 재학습

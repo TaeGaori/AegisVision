@@ -1,5 +1,5 @@
 [project]
-name = "roboflow-universe"
+name = "AegisVision"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -16,11 +16,8 @@ dependencies = [
     "scikit-learn>=1.7.2",
     "xgboost>=3.2.0",
     "ultralytics>=8.4.153",
+    "mlflow>=3.16.0",
 ]
 
-[project.scripts]
-roboflow-universe = "roboflow_universe:main"
-
-[build-system]
-requires = ["uv_build>=0.12.2,<0.13.0"]
-build-backend = "uv_build"
+[tool.uv]
+package = false
