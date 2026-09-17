@@ -82,4 +82,24 @@ results = model.train(data="coco8.yaml", epochs=100, imgsz=640)
 ---
 1. Roboflow Universe에서 데이터 다운
 2. YOLO로 학습(`python drone_train.py`)
-3. 학습 중 멈추면 (`resume_train.py`)로 재학습
+
+
+
+
+
+---
+# 트러블 슈팅
+---
+### 1. 여러 컴퓨터에서 이어서 학습할 때 접근 권한이 없어 에러 발생
+- **시도** : 학원 컴퓨터로 학습을 시작하고, 집 컴퓨터에서 `resume=True`로 이어서 돌림
+- **문제점** : `PermissionError`로 실패
+- **원인** : `resume=True`는 이전 학습 시 `args.yaml`에 저장된 절대경로를 그대로 재사용하기 때문에 계정이 바뀌면 그 경로에 접근 권한이 없어 에러 발생함
+- **해결방법** : `resume=True`대신, 이전 학습의 가중치 파일 `last.pt`를 새 학습의 시작점으로 불러 오는 방식으로 변환 
+
+---
+
+### 2. 결과 저장 경로가 예상과 다른 곳에 쌓임
+- **시도** : `python drone_train.py`로 `last.pt`를 시작점으로 가져와 학습 시작
+- **문제점** : `runs/detect/train`안에 `runs/detect`폴더가 하나 더 생기고 새로 생긴 폴더에 학습 결과가 저장됨
+- **원인** : ***Ultralytics***는 detect작업 시 기본 저장 경로가 이미 `runs/detct`인데 코드에 `project='runs/detect'`를 추가로 지정해 경로가 중복됨
+- **해결방법** : `project='runs/detect'`인자를 빼고 name만 사용하고 `ls -l`로 파일 수정 시각을 비교해 최신 파일을 정상 경로로 `cp`한 뒤 잘못된 파일 삭제함

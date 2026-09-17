@@ -1,8 +1,8 @@
 task: detect
 mode: train
-model: yolo26n.pt
+model: runs/detect/train/weights/last.pt
 data: Drone_Data/data.yaml
-epochs: 10
+epochs: 5
 time: null
 patience: 15
 batch: 16
@@ -14,7 +14,7 @@ device: ''
 workers: 8
 project: null
 name: train
-exist_ok: false
+exist_ok: true
 pretrained: true
 cls_remap: true
 optimizer: auto
