@@ -1,3 +1,5 @@
+# DB 연결
+
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
@@ -11,7 +13,7 @@ class Base(DeclarativeBase):
     pass
 
 def get_db():
-    db = sessionmaker()
+    db = Sessionmaker()
     try:
         yield db
     finally:

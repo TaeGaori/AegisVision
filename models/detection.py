@@ -1,6 +1,8 @@
+# DB에 들어갈 테이블 구조
+
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Column, func, Float
+from sqlalchemy import DateTime, ForeignKey, Integer, String, func, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 
@@ -13,12 +15,12 @@ class DetectionRequest(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     endpoint: Mapped[str] = mapped_column(String(50), nullable=False)
     requested_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    model_path: Mapped[str] = mapped_column(String(255), nullable=False)
     # 시간을 저장하는 거라 datetime 사용 -> 밀리초를 저장하는 거라 float 사용
     inference_time_ms: Mapped[float] = mapped_column(Float, nullable=True)
     detection_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    detections: Mapped[list['detection']] = relationship(back_populates='request',
+    detections: Mapped[list['Detection']] = relationship(back_populates='request',
                                                 cascade='all, delete-orphan'
                                                 )
 
