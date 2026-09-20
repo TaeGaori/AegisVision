@@ -29,7 +29,8 @@ class Detection(Base):
     __tablename__ = "detections"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    request_id: Mapped[int] = mapped_column(Integer, ForeignKey('detection_requests.id'), nullable=False)
+    # ondelete='CASCADE' -> DB제약조건 이중으로 보호
+    request_id: Mapped[int] = mapped_column(Integer, ForeignKey('detection_requests.id',ondelete='CASCADE'), nullable=False, index=True)
     class_name: Mapped[str] = mapped_column(String(50), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     bbox_x1: Mapped[float] = mapped_column(Float, nullable=False)

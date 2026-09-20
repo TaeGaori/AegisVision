@@ -34,6 +34,7 @@ dependencies = [
     { name = "pandas" },
     { name = "psycopg2-binary" },
     { name = "scikit-learn" },
+    { name = "sqlalchemy" },
     { name = "ultralytics" },
     { name = "xgboost", version = "3.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "xgboost", version = "3.4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -49,6 +50,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "psycopg2-binary", specifier = ">=2.9.13" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
+    { name = "sqlalchemy", specifier = ">=2.0.54" },
     { name = "ultralytics", specifier = ">=8.4.153" },
     { name = "xgboost", specifier = ">=3.2.0" },
 ]

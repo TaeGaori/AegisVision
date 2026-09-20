@@ -7,9 +7,9 @@ mlflow.set_experiment("drone-detection")
 # 사전학습된 가중치를 바로 불러옴
 model = YOLO('runs/detect/train/weights/last.pt')
 
-# 1차: 13회 / 2차: 5회
+# 1차: 13/20회 / 2차: 5회   /3차 : 10/20회(실수로 창 닫음)  / 4차 : /40
 
-EPOCHS = 5
+EPOCHS = 40
 IMGSZ = 640
 PATIENCE = 15
 

@@ -12,27 +12,35 @@ def save_detection_result(
         inference_time_ms: float,
         detections: list[dict]
 )   -> DetectionRequest:
-    db_request = DetectionRequest(
-        filename=filename,
-        endpoint=endpoint,
-        model_path=model_manager.get_model_path(),
-        inference_time_ms=inference_time_ms,
-        detection_count=len(detections)
-    )
-    db.add(db_request)
-    db.commit()
-    db.refresh(db_request)
 
-    for d in detections:
-        db.add(Detection(
-            request_id=db_request.id,
-            class_name=d["class_name"],
-            confidence=d["confidence"],
-            bbox_x1=d["bbox"][0],
-            bbox_y1=d["bbox"][1],
-            bbox_x2=d["bbox"][2],
-            bbox_y2=d["bbox"][3]
-        ))
-    db.commit()
+    try:
+        db_request = DetectionRequest(
+            filename=filename,
+            endpoint=endpoint,
+            model_path=model_manager.get_model_path(),
+            inference_time_ms=inference_time_ms,
+            detection_count=len(detections)
+        )
+        db.add(db_request)
 
-    return db_request
+        # SQL을 보내서 id를 받아오되 트랜잭션은 아직 안 끝남
+        db.flush()
+
+        for d in detections:
+            db.add(Detection(
+                request_id=db_request.id,
+                class_name=d["class_name"],
+                confidence=d["confidence"],
+                bbox_x1=d["bbox"][0],
+                bbox_y1=d["bbox"][1],
+                bbox_x2=d["bbox"][2],
+                bbox_y2=d["bbox"][3]
+            ))
+        db.commit()
+        db.refresh(db_request)
+
+        return db_request
+
+    except Exception:
+        db.rollback()
+        raise

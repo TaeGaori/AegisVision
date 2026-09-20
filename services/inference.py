@@ -4,12 +4,11 @@ from services.model_manager import model_manager
 from PIL import Image
 import time
 import io
-from PIL import Image
 
-model = model_manager.get_model()
 
 # 학습된 모델을 활용해 추론
 def run_inference(image: Image.Image):
+    model = model_manager.get_model()
     results = model.predict(image, conf=0.25)
     return results[0]
 
@@ -17,7 +16,7 @@ def parse_detections(result) -> list[dict]:
     detections = []
     for box in result.boxes:
         detections.append({
-            "class_name": model.names[int(box.cls)],
+            "class_name": result.names[int(box.cls)],
             "confidence": float(box.conf),
             "bbox": box.xyxy[0].tolist()
         })

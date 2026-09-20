@@ -90,7 +90,7 @@ results = model.train(data="coco8.yaml", epochs=100, imgsz=640)
 ---
 # 트러블 슈팅
 ---
-### 1. 여러 컴퓨터에서 이어서 학습할 때 접근 권한이 없어 에러 발생
+### 1. 여러 컴퓨터에서 이어서 학습할 때 접근 권한이 없어 에러
 - **시도** : 학원 컴퓨터로 학습을 시작하고, 집 컴퓨터에서 `resume=True`로 이어서 돌림
 - **문제점** : `PermissionError`로 실패
 - **원인** : `resume=True`는 이전 학습 시 `args.yaml`에 저장된 절대경로를 그대로 재사용하기 때문에 계정이 바뀌면 그 경로에 접근 권한이 없어 에러 발생함
@@ -103,3 +103,59 @@ results = model.train(data="coco8.yaml", epochs=100, imgsz=640)
 - **문제점** : `runs/detect/train`안에 `runs/detect`폴더가 하나 더 생기고 새로 생긴 폴더에 학습 결과가 저장됨
 - **원인** : ***Ultralytics***는 detect작업 시 기본 저장 경로가 이미 `runs/detct`인데 코드에 `project='runs/detect'`를 추가로 지정해 경로가 중복됨
 - **해결방법** : `project='runs/detect'`인자를 빼고 name만 사용하고 `ls -l`로 파일 수정 시각을 비교해 최신 파일을 정상 경로로 `cp`한 뒤 잘못된 파일 삭제함
+
+---
+
+### 3. DB 세션의 생성과 종료를 직접 관리하면서 발생할 수 있는 문제
+- **시도** :**FastAPI**의 각 API에서 SQLAlchemy Session을 사용하여 **PostgreSQL**에 데이터를 저장
+- **문제점** : API 요청마다 DB Session을 생성 후 종료해야 하는데 각 라우터에서 직접 Session으로 관리하여 예외 발생 시 Session이 정상적으로 정리되지 않음
+- **원인** : **DB** Session의 생성과 종료에 대한 공통적인 관리 구조가 없어 발생함
+- **해결방법** : **DB** 세션 생성과 정리를 하나의 `Dependency`로 분리하고 `routers`에 `Depends()`를 사용해 Session을 주입하고 API 요청이 끝나면 `finally`에서 Session이 자동 정리되도록 구성
+
+---
+
+### 4. 하나의 요청에 대한 DB 데이터가 부분적으로 저장됨
+- **시도** : 하나의 이미지 요청에 대한 `DetectionRequest`와 여러 개의 `Detection` 데이터를 **PostgreSQL**에 저장
+- **문제점** : 하나의 요청에 대한 **DB** 데이터가 부분적으로 저장됨
+- **원인** : `DetectionRequest`를 저장하고 `commit`한 다음 `Detection` 데이터를 추가로 저장하는 방식을 사용함
+- **해결방법**  : `commit` 대신 `flush` 를 사용하고 저장 과정에서 오류가 발생하면 rollback()하도록 구성
+
+---
+
+### 5. 부모 데이터 삭제 시 Detection 데이터가 남는 문제
+- **시도** : `DetectionRequest`와 `Detection`을 `Foreign Key`를 이용한 1:N 관계로 구성
+- **문제점** : `DetectionRequest`가 삭제되었을 때 자식데이터인`Detection`가 남아 고아 데이터 발생 
+- **원인** : 부모 데이터와 자식 데이터의 삭제 동작을 명시적으로 설정하지 않음
+- **해결방법** : **SQLAlchemy ORM**에는 `cascae` **Database**에는 `Foreign Key`에 `ON DELETE CASCADE`적용
+
+---
+
+### 6. 모델 로딩과 추론 로직이 결홥되는 문제 
+- **시도** : `inference.py`에서 YOLO 모델을 직접 불러와 객체 탐지를 수행
+- **문제점** : 추론 로직에서 모델 파일의 경로와 로직 방식까지 알고 있어 모델이 변경될 때 추론 코드도 수정해야 하는 문제 발생
+- **원인** : 모델의 관리 및 로딩 책임과 추론 책임이 하나의 코드에 있음
+- **해결방법** : 모델의 로딩과 관리를 `ModelManager`로 분리하고 추론 코드에서는 직접 모델을 생성하지 않고 형태로 모델을 가져오도록 구성
+
+---
+
+### 7. API 오청마다 YOLO 모델을 반복해서 로딩
+- **시도** : `predict` 요청이 들어올 때 YOLO 모델을 생성하여 추론
+- **문제점** : API 요청마다 모델을 새롭게 로딩하면 모델 초기화에 불필요한 시간이 발생
+- **원인** : 모델 객체의 생명주기를 관리하지 않고 요청 단위로 모델을 생성하는 구조이기 때문
+- **해결방법** : `ModelManger`에서 모델 객체를 한 번만 생성하고 이후 요청에서는 기존 객체를 재사용하도록 구성
+
+---
+
+### 8. 객체 탐지 결과 이미지를 API 응답으로 반환
+- **시도** : `/predict/visualize`에서 **YOLO**의 객체 탐지 결과에 **Bounding Box**를 표시한 이미지를 반환
+- **문제점** : 일반적인 `/predict` API는 JSON을 반환하지만 `/predict/visualize`는 이미지 데이터를 반환해야 하므로 동일한 Response 방식을 사용할 수 없음
+- **원인** : API의 목적에 따라 응답 데이터 형식이 다르기 때문
+- **해결방법** : YOLO의 `result.plot()`을 이용하여 **Bounding Box**가 표시된 이미지를 생성한 후 **BytesIO**에 JPEG 형식으로 저장하고 **StreamingResponse**로 반환
+
+---
+
+### 8. FastAPI에서 DB 작업과 추론 로직의 책임 분리
+- **시도** : `/predict` API에서 파일 업로드부터 YOLO 추론, 결과 파싱, DB 저장까지 한 번에 처리
+- **문제점** : 하나의 Router 함수에 여러 책임이 집중되면 코드가 복잡해지고 각각의 기능을 독립적으로 수정하거나 테스트하기 어려움
+- **원인** : API 요청을 처리하는 Router와 실제 비즈니스 로직이 분리되지 않았음
+- **해결방법** : 기능별로 책임을 분리
