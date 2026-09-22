@@ -1,3 +1,5 @@
+mlflow 실행 코드 -> uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
+
 # MLOps 포트폴리오 프로젝트 계획
 
 ## 프로젝트 주제
@@ -99,10 +101,10 @@ results = model.train(data="coco8.yaml", epochs=100, imgsz=640)
 ---
 
 ### 2. 결과 저장 경로가 예상과 다른 곳에 쌓임
-- **시도** : `python drone_train.py`로 `last.pt`를 시작점으로 가져와 학습 시작
-- **문제점** : `runs/detect/train`안에 `runs/detect`폴더가 하나 더 생기고 새로 생긴 폴더에 학습 결과가 저장됨
-- **원인** : ***Ultralytics***는 detect작업 시 기본 저장 경로가 이미 `runs/detct`인데 코드에 `project='runs/detect'`를 추가로 지정해 경로가 중복됨
-- **해결방법** : `project='runs/detect'`인자를 빼고 name만 사용하고 `ls -l`로 파일 수정 시각을 비교해 최신 파일을 정상 경로로 `cp`한 뒤 잘못된 파일 삭제함
+- **시도** : 저장 경로를 명시하기 위해 `model.train(..., project="runs/detect", name="train")`으로 지정
+- **문제점** : 결과가 `runs/detect/train`이 아니라 `runs/detect/runs/detect/train`처럼 폴더가 이중으로 생성됨
+- **원인** : Ultralytics는 detect 작업 시 기본 저장 경로가 이미 `runs/detect`인데, `project="runs/detect"`를 추가로 지정해서 경로가 중복됨
+- **해결방법** : `project` 인자를 빼고 `name="train"`, `exist_ok=True`만 사용. 이미 잘못된 경로에 쌓인 파일은 수정 시각을 비교해 더 최신 것을 정상 경로로 옮기고 잘못된 폴더는 삭제해 정리
 
 ---
 
@@ -159,3 +161,41 @@ results = model.train(data="coco8.yaml", epochs=100, imgsz=640)
 - **문제점** : 하나의 Router 함수에 여러 책임이 집중되면 코드가 복잡해지고 각각의 기능을 독립적으로 수정하거나 테스트하기 어려움
 - **원인** : API 요청을 처리하는 Router와 실제 비즈니스 로직이 분리되지 않았음
 - **해결방법** : 기능별로 책임을 분리
+
+---
+
+### 9. MLflow에 학습 스크립트가 나타나지 않는 오류
+- **시도** : `mlflow.set_tracking_uri("sqlite:///mlflow.db")`로 학습 스크립트에서 기록을 남기고, `mlflow ui`로 대시보드 확인
+- **문제점** : `mlflow ui`를 옵션 없이 실행하면 기록한 실험이 안 보이고 "Default"만 뜸
+- **원인** : `mlflow ui`를 인자 없이 실행하면 기본 저장소(`mlruns/` 폴더)를 보여주는데, 실제 기록은 `mlflow.db`(SQLite)에 쌓이고 있어 서로 다른 곳을 보고 있었음
+- **해결방법** : `mlflow ui --backend-store-uri sqlite:///mlflow.db`처럼 실제 기록 위치를 명시해서 실행
+
+---
+
+### 10. 컬럼명과 테이블명이 달라 테이블이 존재하지 않는 오류 발생
+- **시도** : `models.py`에 정의한 테이블 구조를 `Base.metadata.create_all(bind=engine)`으로 PostgreSQL에 생성
+- **문제점** : 컬럼명을 바꾼 뒤에도 "테이블이 존재하지 않는다"는 에러가 계속 발생
+- **원인** : `create_all()`은 테이블이 "없을 때만" 생성해주는 함수라, 컬럼 구조를 바꿔도 이미 만들어진 테이블에는 반영이 안 되고, `--reload`로 인한 재시작도 항상 `main.py`를 처음부터 다시 로드하는 것은 아니었음
+- **해결방법** : 테이블을 `DROP TABLE`로 지운 뒤, 서버를 완전히 종료했다가 처음부터 재시작
+
+---
+
+### 11. 성공하지 못한 epoch까지 총 step 개수로 포함
+- **시도** : 여러 학습 세션(run)의 mAP50 등 지표를 하나의 누적 그래프로 이어붙이는 스크립트 작성, `run.data.params.get("epochs")`(목표 epoch 값)를 기준으로 각 run의 step offset을 계산
+- **문제점** : 실제로는 68 epoch 정도 진행했다고 기억하는데, 병합된 그래프의 총 step 수가 97까지 나오는 등 실제보다 부풀려짐
+- **원인** : 지표 기록이 아예 없는 run이나 patience로 조기 종료된 run까지 "목표로 설정한 epochs 파라미터" 값만큼 offset을 채워 넣어서, 실제로 진행되지 않은 구간까지 누적 길이에 포함됨
+- **해결방법** : 목표 epochs 파라미터를 쓰지 않고, 각 run에서 실제로 기록된 metric history의 마지막 step만을 기준으로 offset을 계산하도록 수정. 지표 기록이 전혀 없는 run은 완전히 건너뛰도록 처리
+
+---
+
+### 12. 전체 합계의 값이 0이 나옴
+- **시도** : `/model/training-history` API에서 각 run의 실제 완료 epoch(`actual_epochs`)을 별도로 계산해 응답에 추가하고, 전체 합계(`total_epochs`)도 실제값 기준으로 정확하게 산출
+- **문제점** : `actual_epochs` 필드 자체는 정상적으로 나왔지만, `epochs`(목표값) 필드에 목표값과 실제값이 합쳐진 숫자가 나오고, `total_epochs`는 항상 0으로 나옴
+- **원인** : 실제값을 목표값 변수(`target_epochs`)에 `+=`으로 더해버려 두 값이 섞였고, 정작 전체 합계를 누적해야 할 `total_epochs` 변수에는 더하는 코드 자체가 빠져 있었음
+- **해결방법** : `target_epochs += actual_epochs`로 되어 있던 부분을 `total_epochs += actual_epochs`로 수정해, 목표값(`epochs`)과 실제값(`actual_epochs`)이 각각 독립적으로 유지되고 전체 합계(`total_epochs`)에는 실제값만 정확히 누적되도록 정리
+
+
+- **시도** :
+- **문제점** : 
+- **원인** :
+- **해결방법** :

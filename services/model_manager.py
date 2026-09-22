@@ -2,7 +2,7 @@
 from ultralytics import YOLO
 import os
 
-MODEL_PATH = 'runs/detect/train/weights/last.pt'
+MODEL_PATH = 'runs/detect/train/weights/best.pt'
 
 class ModelManager:
     # 모델 로드/조회를 한 곳에서 관리
