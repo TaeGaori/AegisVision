@@ -14,7 +14,13 @@ class TrainingRun(BaseModel):
     recall: float | None = None
     started_at : str
 
+class CumulativePoint(BaseModel):
+    step: int
+    value: float
+
+
 class TrainingHistoryResponse(BaseModel):
     total_sessions: int
     total_epochs: int
     runs: list[TrainingRun]
+    cumulative_metrics: dict[str, list[CumulativePoint]] = {}

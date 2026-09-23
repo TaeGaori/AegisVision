@@ -199,3 +199,43 @@ results = model.train(data="coco8.yaml", epochs=100, imgsz=640)
 - **문제점** : 
 - **원인** :
 - **해결방법** :
+
+
+
+
+
+
+
+
+
+
+AegisVision
+│
+├── FastAPI
+│   ├── routers
+│   │   ├── health.py
+│   │   ├── model.py
+│   │   ├── predict.py
+│   │   ├── metrics.py
+│   │   └── training.py
+│   │
+│   ├── services
+│   │   ├── inference.py
+│   │   ├── model_manager.py
+│   │   ├── detection_service.py
+│   │   └── training_service.py
+│   │
+│   ├── models
+│   └── schemas
+│
+├── PostgreSQL
+│
+├── MLflow
+│   └── mlflow.db
+│
+├── Streamlit
+│
+└── Docker Compose
+    ├── api
+    ├── db
+    └── web

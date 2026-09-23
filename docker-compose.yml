@@ -13,19 +13,32 @@ services:
       - .env
 
     volumes:
-      - ./runs:/app/runs           # YOLO 모델 가중치
-      - ./mlflow.db:/app/mlflow.db # MLflow 학습 기록
+      - ./runs:/app/runs
+      - ./mlflow.db:/app/mlflow.db
 
     depends_on:
       db:
         condition: service_healthy
 
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
   db:
     image: postgres:17
+    container_name: AegisVision_db
 
     ports:
       - "5432:5432"
-    container_name: AegisVision_db
 
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -36,15 +49,21 @@ services:
       - pgdata:/var/lib/postgresql/data
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
+
 
   web:
     build:
       context: .
       dockerfile: Dockerfile.streamlit
+
     container_name: AegisVision-streamlit
 
     ports:
@@ -52,9 +71,10 @@ services:
 
     environment:
       API_BASE_URL: http://api:8000
-    
+
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
     command: >
       streamlit run streamlit_app.py
