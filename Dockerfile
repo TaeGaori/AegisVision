@@ -1,3 +1,5 @@
+# docker-compose up 명령어
+
 FROM python:3.11-slim
 
 WORKDIR /app

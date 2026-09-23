@@ -9,7 +9,7 @@ import io
 # 학습된 모델을 활용해 추론
 def run_inference(image: Image.Image):
     model = model_manager.get_model()
-    results = model.predict(image, conf=0.25)
+    results = model.predict(image, conf=0.75)
     return results[0]
 
 def parse_detections(result) -> list[dict]:

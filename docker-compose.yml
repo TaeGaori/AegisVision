@@ -41,5 +41,26 @@ services:
       timeout: 5s
       retries: 5
 
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: AegisVision-streamlit
+
+    ports:
+      - "8501:8501"
+
+    environment:
+      API_BASE_URL: http://api:8000
+    
+    depends_on:
+      - api
+
+    command: >
+      streamlit run streamlit_app.py
+      --server.address=0.0.0.0
+      --server.port=8501
+
+
 volumes:
   pgdata:
