@@ -3,9 +3,11 @@
 # - 라우터에서는 Depends(verify_api_key)만 붙이면 인증이 걸림
 
 import os
+from datetime import datetime, timedelta, timezone
 
-from fastapi import Request, Security, HTTPException, status
-from fastapi.security import APIKeyHeader
+from fastapi import Request, Security, HTTPException, status, Depends
+from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
+from jose import JWTError, jwt
 
 # .env 예시: API_KEYS=key-for-control-center,key-for-sensor-gateway-01
 # 콤마로 여러 클라이언트의 키를 등록 (클라이언트별로 다른 키를 발급해두면
@@ -50,3 +52,59 @@ def verify_api_key(
 
     request.state.client_name = client_name
     return client_name
+
+
+# ── JWT 인증 (사람이 로그인해서 쓰는 대시보드/관리 기능용) ───────────────────
+# API Key는 위에서 이미 처리했으므로, 여기서는 "로그인한 사용자" 흐름만 담당한다.
+
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-only-change-me")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
+
+# tokenUrl은 Swagger UI(/docs)에서 "Authorize" 버튼이 로그인 요청을 보낼 주소
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
+
+
+def create_access_token(username: str, role: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES)
+    payload = {"sub": username, "role": role, "exp": expire}
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+def get_current_user(
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
+) -> dict:
+    """로그인 여부만 확인 (권한 무관). Depends(get_current_user)로 사용."""
+    credentials_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="인증 토큰이 유효하지 않습니다.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    if token is None:
+        raise credentials_error
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        raise credentials_error
+
+    username = payload.get("sub")
+    role = payload.get("role")
+    if username is None or role is None:
+        raise credentials_error
+
+    # 감사 로그에서 API Key 클라이언트와 동일한 방식으로 조회되도록 재사용
+    request.state.client_name = f"user:{username}"
+    return {"username": username, "role": role}
+
+
+def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """관리자 전용 엔드포인트에 Depends(require_admin)으로 사용."""
+    if current_user["role"] != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="관리자 권한이 필요합니다.",
+        )
+    return current_user

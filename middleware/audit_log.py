@@ -4,27 +4,12 @@
 #   (프록시 없이 직접 노출된 상태라면 request.client.host가 곧 실제 IP)
 
 import time
-import logging
 
 from fastapi import FastAPI, Request
-from fastapi.concurrency import run_in_threadpool
 
 from database import Sessionmaker
 from models.audit import AuditLog
 
-logger = logging.getLogger("audit")
-SKIP_PATHS = {"/health"}
-
-def _write_audit_log(**fields) -> None:
-    db = Sessionmaker()
-    try:
-        db.add(AuditLog(**fields))
-        db.commit()
-    except Exception:
-        logger.exception("감사 로그 저장 실패")
-        db.rollback()
-    finally:
-        db.close()
 
 def _get_client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for")
@@ -41,21 +26,26 @@ def register_audit_middleware(app: FastAPI) -> None:
 
         response = await call_next(request)
 
-        if request.url.path in SKIP_PATHS:
-            return response   
-
         process_time_ms = (time.time() - start_time) * 1000
         client_ip = _get_client_ip(request)
         # core.security.verify_api_key()가 인증에 성공하면 request.state.client_name에 심어둔 값
         client_name = getattr(request.state, "client_name", None)
 
-        await run_in_threadpool(
-            _write_audit_log,
-            client_ip=client_ip,
-            client_name=client_name,
-            method=request.method,
-            path=request.url.path,
-            status_code=response.status_code,
-            process_time_ms=process_time_ms,
-        )
+        db = Sessionmaker()
+        try:
+            db.add(AuditLog(
+                client_ip=client_ip,
+                client_name=client_name,
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                process_time_ms=process_time_ms,
+            ))
+            db.commit()
+        except Exception:
+            # 로깅 실패가 실제 API 응답을 막으면 안 되므로 조용히 롤백만 하고 넘어간다
+            db.rollback()
+        finally:
+            db.close()
+
         return response

@@ -1,0 +1,9 @@
+# HTTPS 리버스 프록시 설정 (Caddy는 이 파일만으로 Let's Encrypt 인증서 발급/자동 갱신까지 처리)
+# {$DOMAIN}은 .env의 DOMAIN 값을 그대로 사용 (예: yourname.duckdns.org)
+
+{$DOMAIN} {
+	# FastAPI 컨테이너로 전달 + 실제 발신 IP를 X-Forwarded-For로 전달
+	reverse_proxy api:8000 {
+		header_up X-Forwarded-For {remote_host}
+	}
+}

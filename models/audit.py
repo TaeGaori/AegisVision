@@ -15,7 +15,7 @@ class AuditLog(Base):
 
     client_ip: Mapped[str] = mapped_column(String(64), nullable=False)
     # verify_api_key()가 반환한 클라이언트 식별 이름 (인증 실패 시 None)
-    client_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    client_name: Mapped[str] = mapped_column(String(100), nullable=True)
 
     method: Mapped[str] = mapped_column(String(10), nullable=False)
     path: Mapped[str] = mapped_column(String(255), nullable=False)

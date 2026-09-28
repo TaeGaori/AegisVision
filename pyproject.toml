@@ -23,6 +23,8 @@ dependencies = [
     "streamlit>=1.63.0",
     "requests>=2.34.2",
     "altair>=6.3.0",
+    "passlib>=1.7.4",
+    "bcrypt>=5.0.0",
 ]
 
 [tool.uv]

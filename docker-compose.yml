@@ -3,8 +3,11 @@ services:
     build: .
     container_name: AegisVision
 
-    ports:
-      - "8000:8000"
+    # HTTPS는 아래 caddy가 담당하므로, 운영 환경에서는 8000을 호스트에 직접 노출하지 않는다.
+    # (직접 노출하면 누구나 http://서버IP:8000 으로 인증서 없이 접근 가능해져 HTTPS를 우회하게 됨)
+    # 개발 중 브라우저에서 바로 확인하고 싶을 때만 아래 주석을 풀어서 사용
+    # ports:
+    #   - "8000:8000"
 
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
@@ -37,6 +40,9 @@ services:
     image: postgres:17
     container_name: AegisVision_db
 
+    ports:
+      - "5432:5432"
+
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -68,7 +74,6 @@ services:
 
     environment:
       API_BASE_URL: http://api:8000
-      API_KEY: ${STREAMLIT_API_KEY}
 
     depends_on:
       api:
@@ -80,5 +85,28 @@ services:
       --server.port=8501
 
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: AegisVision-caddy
+
+    ports:
+      - "80:80"     # ACME(Let's Encrypt) 인증서 발급용 - HTTP로 자동 리다이렉트도 처리
+      - "443:443"
+
+    environment:
+      DOMAIN: ${DOMAIN}
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+    depends_on:
+      api:
+        condition: service_healthy
+
+
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
