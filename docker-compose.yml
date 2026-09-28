@@ -37,9 +37,6 @@ services:
     image: postgres:17
     container_name: AegisVision_db
 
-    ports:
-      - "5432:5432"
-
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -71,6 +68,7 @@ services:
 
     environment:
       API_BASE_URL: http://api:8000
+      API_KEY: ${STREAMLIT_API_KEY}
 
     depends_on:
       api:

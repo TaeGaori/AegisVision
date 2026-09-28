@@ -8,6 +8,9 @@ import requests
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
+API_KEY = os.getenv("API_KEY", "")
+HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
+
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
 
 st.set_page_config(
@@ -30,7 +33,12 @@ def _error_message(response: requests.Response) -> str:
 @st.cache_data(ttl=10, show_spinner=False)
 def get_json(path: str) -> tuple[Any, str | None]:
     try:
-        response = requests.get(f"{API_BASE_URL}{path}", timeout=10)
+        # ★ 변경 1: headers=HEADERS 추가
+        response = requests.get(
+            f"{API_BASE_URL}{path}",
+            headers=HEADERS,
+            timeout=10,
+        )
         response.raise_for_status()
         return response.json(), None
     except requests.RequestException as exc:
@@ -44,6 +52,7 @@ def post_image(path: str, file_bytes: bytes, filename: str):
         response = requests.post(
             f"{API_BASE_URL}{path}",
             files={"file": (filename, file_bytes)},
+            headers=HEADERS,  # ★ 변경 2: headers=HEADERS 추가
             timeout=60,
         )
         response.raise_for_status()

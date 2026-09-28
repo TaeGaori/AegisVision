@@ -209,33 +209,80 @@ results = model.train(data="coco8.yaml", epochs=100, imgsz=640)
 
 
 
-AegisVision
+
+AegisVision/
 │
-├── FastAPI
-│   ├── routers
-│   │   ├── health.py
-│   │   ├── model.py
-│   │   ├── predict.py
-│   │   ├── metrics.py
-│   │   └── training.py
+├── core/                           # 공통 핵심 설정 및 보안
+│   ├── __init__.py
+│   ├── config.py                   # 환경변수 및 프로젝트 설정
+│   └── security.py                 # API Key 인증
+│
+├── middleware/                     # 공통 요청 및 응답 처리
+│   ├── __init__.py
+│   └── audit_log.py                # API 요청 감사 로그
+│
+├── routers/                        # FastAPI API 엔드포인트
+│   ├── __init__.py
+│   ├── health.py                   # 서버 상태 확인
+│   ├── model.py                    # 모델 정보 및 학습 이력 조회
+│   ├── predict.py                  # 이미지 객체 탐지
+│   ├── metrics.py                  # 탐지 및 시스템 지표 조회
+│   └── training.py                 # 모델 학습 API
+│
+├── services/                       # 핵심 비즈니스 로직
+│   ├── __init__.py
+│   ├── inference.py                # YOLO 이미지 추론
+│   ├── model_manager.py             # 모델 로드 및 관리
+│   ├── detection_service.py         # 탐지 결과 DB 저장
+│   └── training_service.py          # 모델 학습 및 MLflow 연동
+│
+├── models/                         # SQLAlchemy 데이터베이스 모델
+│   ├── __init__.py
+│   ├── detection.py                 # 탐지 요청 및 객체 정보
+│   └── audit.py                     # API 감사 로그 정보
+│
+├── schemas/                        # Pydantic 요청 및 응답 스키마
+│   ├── __init__.py
+│   ├── prediction.py                # 탐지 요청 및 응답
+│   └── model.py                     # 모델 정보 및 학습 이력
+│
+├── datasets/                        # 다중 클래스 탐지 데이터셋
+│   ├── images/
+│   │   ├── train/                   # 학습 이미지
+│   │   ├── val/                     # 검증 이미지
+│   │   └── test/                    # 테스트 이미지
 │   │
-│   ├── services
-│   │   ├── inference.py
-│   │   ├── model_manager.py
-│   │   ├── detection_service.py
-│   │   └── training_service.py
+│   ├── labels/
+│   │   ├── train/                   # 학습 라벨
+│   │   ├── val/                     # 검증 라벨
+│   │   └── test/                    # 테스트 라벨
 │   │
-│   ├── models
-│   └── schemas
+│   └── data.yaml                    # 클래스 및 데이터셋 경로
 │
-├── PostgreSQL
+├── configs/                         # 학습 및 모델 설정
+│   └── train.yaml                   # 학습 하이퍼파라미터
 │
-├── MLflow
-│   └── mlflow.db
+├── scripts/                         # 학습 및 관리 스크립트
+│   └── train.py                     # YOLO 다중 클래스 학습 실행
 │
-├── Streamlit
+├── runs/                            # YOLO 학습 결과 (생성)
+│   └── detect/
+│       └── train/
+│           └── weights/
+│               ├── best.pt
+│               └── last.pt
 │
-└── Docker Compose
-    ├── api
-    ├── db
-    └── web
+├── mlruns/                          # MLflow 아티팩트 (설정에 따라 생성)
+│
+├── main.py                          # FastAPI 애플리케이션 진입점
+├── database.py                      # SQLAlchemy DB 연결 및 세션
+├── streamlit_app.py                 # Streamlit 대시보드
+│
+├── Dockerfile                       # FastAPI 컨테이너 설정
+├── Dockerfile.streamlit             # Streamlit 컨테이너 설정
+├── docker-compose.yml               # API, DB, Streamlit 통합 실행
+├── .env                             # 환경변수 (Git 제외)
+├── .env.example                     # 환경변수 예시
+├── .gitignore                       # Git 제외 파일
+├── requirements.txt                 # Python 의존성
+└── README.md                        # 프로젝트 문서

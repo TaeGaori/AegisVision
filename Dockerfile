@@ -18,6 +18,8 @@ COPY models ./models
 COPY routers ./routers
 COPY schemas ./schemas
 COPY services ./services
+COPY core ./core
+COPY middleware ./middleware
 
 
 EXPOSE 8000

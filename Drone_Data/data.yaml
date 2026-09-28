@@ -2,9 +2,13 @@ train: ../train/images
 val: ../valid/images
 test: ../test/images
 
-nc: 1
-names: ['drone']
-
+nc: 4
+names:
+  0: drone
+  1: bird
+  2: airplane
+  3: helicopter
+  
 roboflow:
   workspace: drone-detection-pexej
   project: drone-detection-data-set-yolov7

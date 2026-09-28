@@ -20,7 +20,7 @@ dependencies = [
     "psycopg2-binary>=2.9.13",
     "sqlalchemy>=2.0.54",
     "pipreqs>=0.5.0",
-    "streamlit>=1.64.0",
+    "streamlit>=1.63.0",
     "requests>=2.34.2",
     "altair>=6.3.0",
 ]

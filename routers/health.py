@@ -8,5 +8,8 @@ router = APIRouter()
 
 @router.get("/health", response_model=HealthResponse)
 def health():
-    model = model_manager.get_model()
-    return HealthResponse(status="ok", model_loaded=model is not None)
+    try:
+       loaded = model_manager.get_model() is not None
+    except FileNotFoundError:
+        loaded = False
+    return HealthResponse(status="ok", model_loaded=loaded)

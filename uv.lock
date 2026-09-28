@@ -58,7 +58,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.34.2" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "sqlalchemy", specifier = ">=2.0.54" },
-    { name = "streamlit", specifier = ">=1.64.0" },
+    { name = "streamlit", specifier = ">=1.63.0" },
     { name = "ultralytics", specifier = ">=8.4.153" },
     { name = "xgboost", specifier = ">=3.2.0" },
 ]

@@ -22,8 +22,7 @@ def parse_detections(result) -> list[dict]:
         })
     return detections
 
-async def process_upload(file) -> tuple:
-    image_bytes = await file.read()
+def process_image_bytes(image_bytes: bytes) -> tuple:
     image = Image.open(io.BytesIO(image_bytes))
 
     start_time =time.time()

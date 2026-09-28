@@ -1,3 +1,4 @@
+
 import mlflow
 from mlflow.tracking import MlflowClient
 
@@ -11,7 +12,6 @@ run_ids_in_order = [
     "67a47352630248dcbb39eb65e9ead3c6",  # adaptable-ray-497
 ]
 
-# 뽑고 싶은 지표들 — (자동로깅 이름, 수동로깅 이름) 쌍으로 등록
 metrics_to_merge = {
     "mAP50": ("metrics/mAP50B", "mAP50"),
     "mAP50_95": ("metrics/mAP50-95B", "mAP50-95"),
@@ -20,40 +20,93 @@ metrics_to_merge = {
 }
 
 
-def build_cumulative_series(metric_auto_name: str, metric_manual_name: str):
+# 각 Run의 실제 완료 Epoch 계산
+def get_actual_epochs(run_id: str) -> int:
+    # train/box_loss를 기준으로 실제 완료 Epoch 계산
+    history = client.get_metric_history(run_id, "train/box_loss")
+
+    # 손실 기록이 없는 경우 mAP50 기록을 대체 기준으로 사용
+    if not history:
+        history = client.get_metric_history(run_id, "metrics/mAP50B")
+
+    if not history:
+        history = client.get_metric_history(run_id, "mAP50")
+
+    if not history:
+        return 0
+
+    return max(point.step for point in history) + 1
+
+
+# 여러 Run의 지표를 하나의 누적 시계열로 구성
+def build_cumulative_series(
+    metric_auto_name: str,
+    metric_manual_name: str
+):
     all_steps = []
     all_values = []
+
+    # 누적 Epoch 위치
     cumulative_offset = 0
 
     for run_id in run_ids_in_order:
-        history = client.get_metric_history(run_id, metric_auto_name)
-        if not history:
-            history = client.get_metric_history(run_id, metric_manual_name)
-        history.sort(key=lambda x: x.step)
+        # 자동 로깅 지표 조회
+        metric_history = client.get_metric_history(
+            run_id,
+            metric_auto_name
+        )
 
-        if not history:
-            continue
+        # 자동 로깅 지표가 없으면 수동 로깅 지표 조회
+        if not metric_history:
+            metric_history = client.get_metric_history(
+                run_id,
+                metric_manual_name
+            )
 
-        for point in history:
+        # Epoch 순서대로 정렬
+        metric_history.sort(key=lambda x: x.step)
+
+        # 현재 Run의 지표를 누적 위치에 맞춰 이동
+        for point in metric_history:
             all_steps.append(point.step + cumulative_offset)
             all_values.append(point.value)
 
-        cumulative_offset += history[-1].step + 1
+        # 다음 Run의 시작 위치를 현재 Run의 실제 Epoch만큼 이동
+        cumulative_offset += get_actual_epochs(run_id)
 
-    return all_steps, all_values, cumulative_offset
+    # 모든 Run 처리가 끝난 후 반환
+    return all_steps, all_values
 
 
+# 전체 실제 완료 Epoch 합계
+final_total_epochs = sum(
+    get_actual_epochs(run_id)
+    for run_id in run_ids_in_order
+)
+
+
+# Summary Run 생성
 mlflow.set_experiment("drone-detection")
+
 with mlflow.start_run(run_name="cumulative_summary_v3"):
-    final_total_epochs = 0
+    mlflow.set_tag("run_type", "cumulative_summary")
 
     for metric_key, (auto_name, manual_name) in metrics_to_merge.items():
-        steps, values, total = build_cumulative_series(auto_name, manual_name)
-        final_total_epochs = max(final_total_epochs, total)
+        steps, values = build_cumulative_series(
+            auto_name,
+            manual_name
+        )
 
+        # 누적 지표 기록
         for step, value in zip(steps, values):
-            mlflow.log_metric(f"cumulative_{metric_key}", value, step=step)
+            mlflow.log_metric(
+                f"cumulative_{metric_key}",
+                value,
+                step=step
+            )
 
+    # 실제 완료 Epoch 합계 기록
     mlflow.log_param("total_epochs", final_total_epochs)
 
-print("완료! 4개 지표(mAP50, mAP50_95, precision, recall) 병합됨")
+print(f"완료! 4개 지표 병합됨")
+print(f"총 실제 완료 Epoch: {final_total_epochs}")

@@ -8,14 +8,18 @@ import io
 
 from database import get_db
 from schemas.prediction import PredictResponse
-from services.inference import parse_detections, process_upload
+from services.inference import parse_detections, process_image_bytes
 from services.detection_service import save_detection_result
+from services.upload_validation import validate_and_read_upload
+
+
 
 router = APIRouter()
 
 @router.post('/predict', response_model=PredictResponse)
 async def predict(file: UploadFile = File(...), db:Session = Depends(get_db)):
-    result, inference_time_ms = await process_upload(file)
+    image_bytes = await validate_and_read_upload(file)
+    result, inference_time_ms = process_image_bytes(image_bytes)
 
     detections = parse_detections(result)
     save_detection_result(db, file.filename, 'predict', inference_time_ms, detections)
@@ -27,7 +31,8 @@ async def predict(file: UploadFile = File(...), db:Session = Depends(get_db)):
             #  Swagger문서에서 이 엔드포인트가 이미지를 반환한다는 걸 명시적으로 보여줌
              responses={200:{"content":{"image/jpeg": {}}, "description":"객체 탐지 결과 이미지"}})
 async def predict_visualize(file: UploadFile = File(...), db:Session=Depends(get_db)):
-    result, inference_time_ms = await process_upload(file)
+    image_bytes = await validate_and_read_upload(file)
+    result, inference_time_ms = await process_image_bytes(image_bytes)
 
     detections = parse_detections(result)
     save_detection_result(db, file.filename, 'predict_visualize', inference_time_ms, detections)

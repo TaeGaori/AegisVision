@@ -57,8 +57,9 @@ def get_training_history() -> dict:
     cumulative_run_id = None
 
     for run in runs:
-        if run.info.run_name == CUMULATIVE_RUN_NAME:
-            cumulative_run_id = run.info.run_id
+        if run.info.run_name.startswith("cumulative_summary"):
+            if run.info.run_name == CUMULATIVE_RUN_NAME:
+                cumulative_run_id = run.info.run_id
             continue
 
         metrics = run.data.metrics
