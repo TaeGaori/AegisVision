@@ -8,6 +8,9 @@ import requests
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 
+API_KEY = os.getenv("API_KEY", "")
+HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
+
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
 
 st.set_page_config(
@@ -30,7 +33,11 @@ def _error_message(response: requests.Response) -> str:
 @st.cache_data(ttl=10, show_spinner=False)
 def get_json(path: str) -> tuple[Any, str | None]:
     try:
-        response = requests.get(f"{API_BASE_URL}{path}", timeout=10)
+        response = requests.get(
+            f"{API_BASE_URL}{path}",
+            headers=HEADERS,
+            timeout=10,
+        )
         response.raise_for_status()
         return response.json(), None
     except requests.RequestException as exc:
@@ -44,6 +51,7 @@ def post_image(path: str, file_bytes: bytes, filename: str):
         response = requests.post(
             f"{API_BASE_URL}{path}",
             files={"file": (filename, file_bytes)},
+            headers=HEADERS,
             timeout=60,
         )
         response.raise_for_status()
@@ -131,8 +139,8 @@ with st.sidebar:
 
 st.divider()
 
-tab_detect, tab_dashboard, tab_training, tab_model = st.tabs(
-    ["🔍 객체 탐지", "📊 운영 대시보드", "📈 학습 이력", "⚙️ 모델 정보"]
+tab_detect, tab_dashboard, tab_training, tab_model, tab_alerts = st.tabs(
+    ["🔍 객체 탐지", "📊 운영 대시보드", "📈 학습 이력", "⚙️ 모델 정보", "🚨 경보"]
 )
 
 with tab_detect:
@@ -398,3 +406,19 @@ with tab_model:
                 st.dataframe(class_df, use_container_width=True, hide_index=True)
             else:
                 st.info("클래스 정보가 없습니다.")
+
+with tab_alerts:
+    st.subheader("🚨 고위험 탐지 경보")
+    alerts, error = get_json("/alerts")
+
+    if error:
+        st.error(f"경보 목록을 불러오지 못했습니다: {error}")
+    elif not alerts:
+        st.info("현재 고위험 경보가 없습니다.")
+    else:
+        for alert in alerts:
+            color = "🔴" if alert["threat_level"] == "critical" else "🟠"
+            st.markdown(
+                f"{color} **{alert['class_name']}** (신뢰도 {alert['confidence']:.0%}) "
+                f"— {alert['detected_at']} — `{alert['filename']}`"
+            )

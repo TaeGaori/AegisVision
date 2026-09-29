@@ -69,11 +69,13 @@ services:
 
     container_name: AegisVision-streamlit
 
+
     ports:
       - "8501:8501"
 
     environment:
       API_BASE_URL: http://api:8000
+      API_KEY: ${STREAMLIT_API_KEY}
 
     depends_on:
       api:

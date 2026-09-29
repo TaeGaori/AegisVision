@@ -37,5 +37,6 @@ class Detection(Base):
     bbox_y1: Mapped[float] = mapped_column(Float, nullable=False)
     bbox_x2: Mapped[float] = mapped_column(Float, nullable=False)
     bbox_y2: Mapped[float] = mapped_column(Float, nullable=False)
+    threat_level: Mapped[str] = mapped_column(String(20), nullable=False, default="low")
 
     request:Mapped[DetectionRequest] = relationship(back_populates='detections')

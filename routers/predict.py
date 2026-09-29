@@ -26,13 +26,13 @@ async def predict(file: UploadFile = File(...), db:Session = Depends(get_db)):
 
     return PredictResponse(filename=file.filename, detections=detections)
 
-# 
+
 @router.post('/predict/visualize', response_class=StreamingResponse,
             #  Swagger문서에서 이 엔드포인트가 이미지를 반환한다는 걸 명시적으로 보여줌
              responses={200:{"content":{"image/jpeg": {}}, "description":"객체 탐지 결과 이미지"}})
 async def predict_visualize(file: UploadFile = File(...), db:Session=Depends(get_db)):
     image_bytes = await validate_and_read_upload(file)
-    result, inference_time_ms = await process_image_bytes(image_bytes)
+    result, inference_time_ms = process_image_bytes(image_bytes)
 
     detections = parse_detections(result)
     save_detection_result(db, file.filename, 'predict_visualize', inference_time_ms, detections)

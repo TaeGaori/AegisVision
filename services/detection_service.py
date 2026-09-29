@@ -3,6 +3,7 @@
 from sqlalchemy.orm import Session
 from models.detection import DetectionRequest, Detection
 from services.model_manager import model_manager
+from services.threat_service import calculate_threat_leavel
 
 
 def save_detection_result(
@@ -27,10 +28,12 @@ def save_detection_result(
         db.flush()
 
         for d in detections:
+            threat_level = calculate_threat_leavel(d["class_name"], d["confidence"])
             db.add(Detection(
                 request_id=db_request.id,
                 class_name=d["class_name"],
                 confidence=d["confidence"],
+                threat_level=threat_level,
                 bbox_x1=d["bbox"][0],
                 bbox_y1=d["bbox"][1],
                 bbox_x2=d["bbox"][2],

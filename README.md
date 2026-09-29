@@ -286,3 +286,151 @@ AegisVision/
 ├── .gitignore                       # Git 제외 파일
 ├── requirements.txt                 # Python 의존성
 └── README.md                        # 프로젝트 문서
+
+
+# 🛰️ AegisVision — 드론 탐지 MLOps 파이프라인
+
+드론(안티드론) 객체 탐지 모델을 학습부터 배포·모니터링까지 자동화된 파이프라인으로 구축한 MLOps 포트폴리오 프로젝트입니다. 단순히 모델을 학습시키는 데서 그치지 않고, 학습 → 실험 추적 → API 서빙 → 데이터베이스 로깅 → 컨테이너화 → 인증/모니터링까지 실제 운영 가능한 시스템 형태로 구현하는 것을 목표로 했습니다.
+
+## 프로젝트 배경
+
+- 로봇공학 전공, 방산 분야를 1순위 희망 직종으로 두고 로봇 관련 직종도 함께 고려하며 진행한 포트폴리오 프로젝트
+- 방산·보안 업계에서 실제로 다뤄지는 "안티드론(counter-drone) 탐지" 주제를 선택해 도메인 관련성을 확보
+- YOLO, MLflow, FastAPI, PostgreSQL, Docker를 모두 처음 다뤄보는 상태에서 시작해, 약 한 달간 단계적으로 학습하며 구현
+
+## 기술 스택
+
+| 영역 | 기술 |
+|---|---|
+| 객체 탐지 모델 | YOLO (Ultralytics) |
+| 실험 관리 | MLflow |
+| 백엔드 API | FastAPI |
+| 데이터베이스 | PostgreSQL + SQLAlchemy ORM |
+| 프론트엔드 대시보드 | Streamlit |
+| 인증 | API Key (X-API-Key), JWT (관리자 로그인) |
+| Rate Limiting | slowapi |
+| 컨테이너화 | Docker, Docker Compose |
+| 리버스 프록시 / HTTPS | Caddy |
+| 패키지 관리 | uv |
+
+## 아키텍처
+
+```
+                         ┌─────────────┐
+                         │   Caddy     │  (HTTPS, 80/443)
+                         │ (reverse    │
+                         │  proxy)     │
+                         └──────┬──────┘
+                                │
+                         ┌──────▼──────┐
+              ┌──────────┤   FastAPI   │──────────┐
+              │          │  (api:8000) │          │
+              │          └──────┬──────┘          │
+              │                 │                 │
+       ┌──────▼──────┐   ┌──────▼──────┐   ┌──────▼──────┐
+       │   YOLO      │   │ PostgreSQL  │   │   MLflow    │
+       │ (모델 추론)  │   │  (탐지/감사  │   │  (학습 이력  │
+       │             │   │   로그)     │   │   추적)     │
+       └─────────────┘   └─────────────┘   └─────────────┘
+                                ▲
+                         ┌──────┴──────┐
+                         │  Streamlit  │  (web:8501)
+                         │  (대시보드)  │
+                         └─────────────┘
+```
+
+FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services/`) · 모델(`models/`) 레이어로 분리된 구조로 설계했습니다.
+
+| 레이어 | 역할 |
+|---|---|
+| `database.py` | DB 연결 설정 (engine, SessionLocal, Base) |
+| `models/` | DB 테이블 구조 정의 (SQLAlchemy ORM) |
+| `schemas/` | API 요청/응답 데이터 형태 정의 (Pydantic) |
+| `services/` | 실제 비즈니스 로직 (YOLO 추론, DB 저장, MLflow 조회) |
+| `routers/` | 엔드포인트 정의, 요청을 받아 서비스에 위임 |
+| `core/` | 인증(API Key, JWT), Rate limiting 설정 |
+| `middleware/` | 감사 로그(audit log) 미들웨어 |
+
+## 프로젝트 진행 과정
+
+### 1. 데이터셋 & 모델 학습
+- Roboflow Universe의 "Drone Detection data set" (단일 클래스, 약 3.3k 이미지)으로 시작
+- YOLO(ultralytics)를 사전학습 가중치 기반 전이학습 방식으로 학습
+- 학습이 여러 컴퓨터·여러 세션에 걸쳐 나뉘어 진행되었으며(약 13 → 5 → 10 → 40 epoch 등), 각 세션의 가중치(`last.pt`)를 이어받아 누적 학습
+- 최종 모델 성능: mAP50 약 0.93, precision 약 0.91, recall 약 0.90
+- 이후 오탐(강아지를 드론으로 오인) 사례를 확인하고 confidence threshold를 조정(0.25 → 0.5), negative sample 추가 및 Airplane/Bird/Drone/Helicopter 4클래스로의 확장을 진행
+
+### 2. 실험 추적 (MLflow)
+- 학습마다 epochs, imgsz 등 하이퍼파라미터와 mAP50 · precision · recall · mAP50-95 지표를 MLflow에 기록
+- 여러 세션에 걸쳐 나뉜 학습 기록을 하나의 누적(cumulative) 곡선으로 병합하는 스크립트(`merge_training_history.py`) 작성
+- FastAPI의 `/model/training-history` 엔드포인트에서 이 기록을 조회해, 목표 epoch 수와 실제 완료된 epoch 수를 구분해 제공
+
+### 3. API 서빙 (FastAPI)
+5개의 핵심 엔드포인트로 구성:
+
+| Method | Endpoint | 설명 |
+|---|---|---|
+| POST | `/predict` | 이미지 업로드 → 탐지 결과를 JSON으로 반환 |
+| POST | `/predict/visualize` | 이미지 업로드 → 바운딩 박스가 그려진 결과 이미지 반환 |
+| GET | `/health` | 서버·모델 상태 확인 (인증 불필요, healthcheck용) |
+| GET | `/model/info` | 현재 서빙 중인 모델의 경로·클래스 정보 |
+| GET | `/metrics` | 총 요청 수, 평균 confidence, 평균 추론 시간 등 운영 지표 |
+| GET | `/model/training-history` | MLflow 학습 이력 및 누적 성능 추이 |
+| POST | `/auth/login` | 관리자 로그인 (JWT 발급) |
+
+`/model/load`, `/models`, `/model/current`처럼 MLflow Model Registry가 필요한 기능은 난이도 대비 우선순위를 고려해 범위에서 제외했습니다.
+
+### 4. 데이터베이스 (PostgreSQL)
+- `detection_requests` / `detections` 1:N 구조로 설계해, 이미지 한 장에 여러 객체가 탐지되는 경우를 지원
+- `audit_logs` 테이블로 모든 API 요청(호출자, 경로, 상태 코드, 응답 시간)을 감사 로그로 기록
+- SQLAlchemy ORM(`Mapped`, `mapped_column`) 기반으로 테이블 정의
+
+### 5. 인증 & 보안
+- API Key(`X-API-Key` 헤더) 인증을 `/predict`, `/model/info`, `/metrics`, `/model/training-history`에 적용, `/health`와 `/auth/login`은 공개
+- 업로드 파일은 확장자가 아닌 실제 파일 내용(매직 바이트)을 검증하고 크기 제한(10MB)을 적용
+- 관리자 로그인은 JWT 기반이며, 로그인 엔드포인트에는 slowapi로 요청 빈도 제한(5회/분)을 적용해 무차별 대입 공격을 방지
+- 운영 환경에서는 Caddy가 HTTPS를 처리하고, FastAPI 포트는 외부에 직접 노출하지 않는 구조
+
+### 6. 프론트엔드 대시보드 (Streamlit)
+- 🔍 객체 탐지: 이미지 업로드 → 탐지 결과 이미지 + 표 표시
+- 📊 운영 대시보드: `/metrics` 기반 요청 수·평균 confidence 등 시각화
+- 📈 학습 이력: 세션별 성능 비교 및 누적 학습 추이 그래프
+- ⚙️ 모델 정보: 현재 서빙 중인 모델의 클래스 목록 표시
+
+### 7. 컨테이너화 (Docker)
+- `api`(FastAPI) · `db`(PostgreSQL) · `web`(Streamlit) · `caddy`(리버스 프록시) 4개 컨테이너로 구성
+- 모델 가중치(`runs/`)와 MLflow 기록(`mlflow.db`)은 volume으로 마운트해 코드와 분리 관리
+- `docker-compose up --build` 한 번으로 전체 스택 기동
+
+## 실행 방법
+
+```bash
+# 1. .env 파일 생성 (.env.example 참고)
+cp .env.example .env
+# POSTGRES_PASSWORD, API_KEYS, JWT_SECRET_KEY 등을 실제 값으로 교체
+
+# 2. 전체 스택 기동
+docker-compose up --build
+
+# 3. 확인
+# FastAPI: http://localhost:8000/docs
+# Streamlit: http://localhost:8501
+```
+
+## 주요 트러블슈팅
+
+프로젝트 진행 중 겪은 문제와 해결 과정입니다.
+
+- **여러 컴퓨터에서 학습 이어가기**: `resume=True`는 이전 세션의 절대경로를 그대로 참조해 컴퓨터(계정)가 바뀌면 `PermissionError`가 발생. `last.pt`를 새 학습의 시작 가중치로 불러오는 방식으로 전환해 해결
+- **MLflow 기록 위치 불일치**: `mlflow ui`를 인자 없이 실행하면 기본 저장소(`mlruns/`)를 보여주는데 실제 기록은 `sqlite:///mlflow.db`에 있어 서로 다른 곳을 가리키는 문제 발생. `--backend-store-uri` 명시로 해결
+- **학습 종료 후 가중치 파일 크기 감소**: 학습이 정상 종료되면 Ultralytics가 optimizer 상태를 제거하고 순수 가중치만 남겨 파일 크기가 작아지는 정상적인 동작이었음을 `model.val()`로 성능을 직접 확인해 검증
+- **누적 학습 곡선 부풀림**: 목표 epoch 수를 기준으로 누적 그래프의 step을 계산하면 실제 진행되지 않은 구간까지 포함됨. 각 run에서 실제로 기록된 metric history의 마지막 step만을 기준으로 수정
+- **Docker 컨테이너 내 opencv 임포트 실패**: `python:3.11-slim` 이미지에 X11 관련 시스템 라이브러리가 없어 발생. `opencv-python-headless`로 교체하고 필요한 시스템 라이브러리(`libgl1`, `libglib2.0-0`)를 Dockerfile에 추가해 해결
+- **passlib-bcrypt 버전 호환성**: 최신 bcrypt(4.1+)가 `__about__` 속성을 제거하면서 passlib의 버전 확인 로직이 깨짐. `bcrypt<4.1`로 버전 고정해 해결
+
+## 향후 개선 방향 (Future Work)
+
+- **비디오 파일 기반 탐지**: 업로드된 비디오를 프레임 단위로 처리해 탐지 결과 영상과 요약 통계를 반환하는 `/predict/video` 엔드포인트
+- **다중 클래스 확장**: 단일 클래스(drone)에서 Airplane/Bird/Drone/Helicopter 4클래스로 확장해 유사 객체 간 오탐 감소
+- **실시간 스트림 처리**: RTSP/웹캠 입력을 받아 WebSocket 기반으로 실시간 프레임을 처리하고, ByteTrack 등으로 프레임 간 객체 추적(tracking)까지 지원하는 구조로 확장
+- **GPU 학습 환경 전환**: 로컬 GPU(RTX 3070) 활용으로 학습 시간을 CPU 대비 대폭 단축
