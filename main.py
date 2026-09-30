@@ -7,7 +7,7 @@ from database import engine, Base, Sessionmaker
 from models.detection import DetectionRequest, Detection  # 테이블 등록을 위해 명시적으로 import 필요
 from models.audit import AuditLog  # 감사 로그 테이블도 동일한 이유로 명시적 import
 from models.user import User  # JWT 로그인용 사용자 테이블도 동일한 이유로 명시적 import
-from routers import health, model, predict, metrics, training, auth, alerts, video
+from routers import health, model, predict, metrics, training, auth, alerts, video, defense_metrics
 from middleware.audit_log import register_audit_middleware
 from core.limiter import limiter
 from services.user_service import seed_default_admin
@@ -59,4 +59,4 @@ app.include_router(metrics.router, dependencies=[Depends(verify_api_key)])
 app.include_router(training.router, dependencies=[Depends(verify_api_key)])
 app.include_router(video.router, dependencies=[Depends(verify_api_key)])
 app.include_router(alerts.router, dependencies=[Depends(verify_api_key)])
-
+app.include_router(defense_metrics.router, dependencies=[Depends(verify_api_key)])

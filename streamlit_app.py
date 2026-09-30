@@ -1,5 +1,6 @@
 import io
 import os
+import json
 from typing import Any
 
 import altair as alt
@@ -139,8 +140,8 @@ with st.sidebar:
 
 st.divider()
 
-tab_detect, tab_dashboard, tab_training, tab_model, tab_alerts = st.tabs(
-    ["🔍 객체 탐지", "📊 운영 대시보드", "📈 학습 이력", "⚙️ 모델 정보", "🚨 경보"]
+tab_detect, tab_video, tab_dashboard, tab_training, tab_model, tab_alerts = st.tabs(
+    ["🔍 객체 탐지", "🎥 비디오 탐지", "📊 운영 대시보드", "📈 학습 이력", "⚙️ 모델 정보", "🚨 경보"]
 )
 
 with tab_detect:
@@ -264,6 +265,51 @@ with tab_dashboard:
                 st.dataframe(ratio_df, use_container_width=True, hide_index=True)
         else:
             st.info("아직 기록된 API 요청이 없습니다.")
+
+    st.divider()
+    st.markdown("### 🎯 방산 스타일 성능 지표")
+
+    defense, derr = get_json("/metrics/defense")
+    if derr:
+        st.warning(f"방산 지표를 불러오지 못했습니다: {derr}")
+    else:
+        low_fpr = defense.get("low_fpr_recall")
+        fps = defense.get("fps_benchmark")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if low_fpr:
+                st.metric(
+                    "낮은 오탐율에서의 Recall",
+                    f"{low_fpr['recall']:.1%}",
+                    help=f"Precision≥99% (conf={low_fpr['conf_threshold']}) 기준"
+                )
+            else:
+                st.info("아직 평가 스크립트를 실행하지 않았습니다.")
+
+        with c2:
+            if fps:
+                st.metric("처리 속도", f"{fps['fps']:.1f} FPS")
+            else:
+                st.info("FPS 벤치마크 데이터 없음")
+
+        class_dist = defense.get("class_distribution", {})
+        if class_dist:
+            st.markdown("#### 클래스별 탐지 분포")
+            dist_df = pd.DataFrame(
+                [{"class": k, "count": v} for k, v in class_dist.items()]
+            )
+            chart = (
+                alt.Chart(dist_df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("class:N", title=None, axis=alt.Axis(labelAngle=0)),
+                    y=alt.Y("count:Q", title="탐지 횟수"),
+                    color=alt.Color("class:N", legend=None),
+                )
+                .properties(height=250)
+            )
+            st.altair_chart(chart, use_container_width=True)
 
 with tab_training:
     st.subheader("MLflow 학습 이력")
@@ -422,3 +468,46 @@ with tab_alerts:
                 f"{color} **{alert['class_name']}** (신뢰도 {alert['confidence']:.0%}) "
                 f"— {alert['detected_at']} — `{alert['filename']}`"
             )
+
+
+with tab_video:
+    st.subheader("비디오 객체 탐지")
+    st.caption("비디오를 업로드하면 프레임별로 탐지하고, 결과 영상과 요약 통계를 보여줍니다. (최대 50MB, 60초)")
+
+    uploaded_video = st.file_uploader(
+        "비디오 선택",
+        type=["mp4", "avi", "mov"],
+        key="video_uploader",
+    )
+
+    if uploaded_video is None:
+        st.info("비디오를 업로드해주세요.")
+    else:
+        if st.button("🎬 비디오 탐지 실행", type="primary", use_container_width=True):
+            with st.spinner("프레임별로 분석하는 중입니다... 영상 길이에 따라 시간이 걸릴 수 있어요."):
+                try:
+                    response = requests.post(
+                        f"{API_BASE_URL}/predict/video",
+                        files={"file": (uploaded_video.name, uploaded_video.getvalue())},
+                        headers=HEADERS,
+                        timeout=300,  # 비디오는 오래 걸릴 수 있어 넉넉하게
+                    )
+                    response.raise_for_status()
+
+                    st.video(response.content)
+
+                    summary_header = response.headers.get("X-Detection-Summary")
+                    if summary_header:
+                        summary = json.loads(summary_header)
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("총 프레임", summary.get("total_frames", 0))
+                        c2.metric("탐지된 프레임", summary.get("frames_with_detection", 0))
+                        c3.metric("영상 길이", f"{summary.get('duration_sec', 0)}초")
+
+                        class_counts = summary.get("class_counts", {})
+                        if class_counts:
+                            st.markdown("#### 클래스별 탐지 횟수")
+                            st.json(class_counts)
+                except requests.RequestException as exc:
+                    detail = _error_message(exc.response) if getattr(exc, "response", None) else str(exc)
+                    st.error(f"비디오 처리 실패: {detail}")

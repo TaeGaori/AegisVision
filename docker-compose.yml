@@ -18,6 +18,7 @@ services:
     volumes:
       - ./runs:/app/runs
       - ./mlflow.db:/app/mlflow.db
+      - ./defense_metrics.josn:/app/defense_metrics.json
 
     depends_on:
       db:

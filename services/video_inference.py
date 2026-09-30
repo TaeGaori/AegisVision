@@ -20,7 +20,7 @@ def process_video(input_path: str) -> tuple[str, dict]:
         raise ValueError(f'비디오 길이는 {MAX_DURATION_SEC}초를 초과할 수 없습니다.')
 
     output_path = tempfile.mktemp(suffix=".mp4")
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    fourcc = cv2.VideoWriter_fourcc(*"avc1")
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width,height))
 
     total_frames = 0
