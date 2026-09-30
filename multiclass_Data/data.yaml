@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 4
+names: ['Airplane', 'Bird', 'Drone', 'Helicopter']
+
+roboflow:
+  workspace: project-ddrone
+  project: datasetdrone-trv98
+  version: 29
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/project-ddrone/datasetdrone-trv98/dataset/29

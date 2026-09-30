@@ -2,7 +2,7 @@ import mlflow
 from mlflow.tracking import MlflowClient
 
 MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
-EXPERIMENT_NAME = "drone-detection"
+EXPERIMENT_NAME = ["drone-detection", "multiclass-detection"]
 
 # 요약용 run 이름 — 일반 세션 목록에서는 제외하고, 종합 결과로만 사용
 CUMULATIVE_RUN_NAME = "cumulative_summary_v3"
@@ -43,12 +43,17 @@ def get_training_history() -> dict:
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     client = MlflowClient()
 
-    experiment = client.get_experiment_by_name(EXPERIMENT_NAME)
-    if experiment is None:
+    experiment_ids = []
+    for name in EXPERIMENT_NAME:
+        experiment = client.get_experiment_by_name(name)
+        if experiment is not None:
+            experiment_ids.append(experiment.experiment_id)
+
+    if not experiment_ids:
         return {"total_sessions": 0, "total_epochs": 0, "runs": [], "cumulative_metrics": {}}
 
     runs = client.search_runs(
-        experiment_ids=[experiment.experiment_id],
+        experiment_ids=experiment_ids,
         order_by=["attributes.start_time ASC"]  
     )
 
@@ -59,7 +64,7 @@ def get_training_history() -> dict:
     for run in runs:
         if run.info.run_name.startswith("cumulative_summary"):
             if run.info.run_name == CUMULATIVE_RUN_NAME:
-                cumulative_run_id = run.info.run_id
+                cumulative_run_id = run.info.run_id 
             continue
 
         metrics = run.data.metrics

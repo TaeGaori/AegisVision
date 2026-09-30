@@ -8,10 +8,10 @@ MODEL_PATH = 'runs/detect/train_multiclass/weights/best.pt'
 DATA_YAML = 'multiclass_Data/data.yaml'
 OUTPUT_PATH = 'defense_metrics.json'
 
-# threshold를 스캔하면서 precision >= 0.99가 되는 지점을 찾음
+# threshold를 스캔하면서 precision >= 0.95가 되는 지점을 찾음
 CONF_THRESHOLDS = [round(x, 2) for x in [i/100 for i in range(30, 100, 2)]]
 
-def find_recall_at_low_fpr(model: YOLO, target_presision: float = 0.99):
+def find_recall_at_low_fpr(model: YOLO, target_precision: float = 0.95):
     best_match = None
 
     for conf in CONF_THRESHOLDS:
@@ -20,11 +20,11 @@ def find_recall_at_low_fpr(model: YOLO, target_presision: float = 0.99):
         recall = float(metrics.box.mr)
 
         # precision이 목표치 넘는 처음 지점
-        if precision >= target_presision:
+        if precision >= target_precision:
             best_match = {"conf_threshold": conf, "precision": precision, "recall": recall}
             break
 
-        return best_match
+    return best_match
 
 def benchmark_fps(model: YOLO, data_yaml: str, sample_size: int = 100):
     """검증 이미지를 연속으로 추론시켜 처리 속도를 측정"""
@@ -32,9 +32,10 @@ def benchmark_fps(model: YOLO, data_yaml: str, sample_size: int = 100):
     with open(data_yaml) as f:
         data_cfg = yaml.safe_load(f)
 
-    val_dir = Path(data_yaml).parent / data_cfg["val"]
-    image_paths = list(val_dir.glob("*.jpg")[:sample_size] + list(val_dir.glob("*.png"))[:sample_size])
-    image_paths = image_paths[:sample_size]
+    val_dir = Path("multiclass_Data/valid/images")
+    jpg_paths = list(val_dir.glob("*.jpg"))
+    png_paths = list(val_dir.glob("*.png"))
+    image_paths = (jpg_paths + png_paths)[:sample_size]
 
     if not image_paths:
         return None

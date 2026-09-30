@@ -1,20 +1,28 @@
-# 학습 이어갈 때 쓰기
+# 학습 이어가기
 
-# resume_multiclass.py
-import mlflow
 from ultralytics import YOLO
+import mlflow
 
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
-mlflow.set_experiment("multiclass-detection")
+def main():
+    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    mlflow.set_experiment("multiclass-detection")
 
-model = YOLO('runs/detect/train_multiclass/weights/last.pt')
+    # 방금 학습이 끝난 가중치를 이어받음
+    model = YOLO('runs/detect/train_multiclass/weights/last.pt')
 
-with mlflow.start_run():
-    result = model.train(resume=True)   # data, epochs 등은 args.yaml에서 자동으로 읽어옴
+    with mlflow.start_run():
+        result = model.train(
+            resume=True,
+            epochs=100   # 목표 epoch를 늘림 (50 → 100)
+        )
 
-    metrics = model.val()
+        metrics = model.val()
 
-    mlflow.log_param('epochs', 'resumed')  # 목표 epoch는 args.yaml에 이미 기록되어 있음
-    mlflow.log_metric('mAP50', metrics.box.map50)
-    mlflow.log_metric("precision", metrics.box.mp)
-    mlflow.log_metric("recall", metrics.box.mr)
+        mlflow.log_param('epochs', 100)
+        mlflow.log_metric('mAP50', metrics.box.map50)
+        mlflow.log_metric("precision", metrics.box.mp)
+        mlflow.log_metric("recall", metrics.box.mr)
+
+
+if __name__ == '__main__':
+    main()

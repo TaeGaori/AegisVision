@@ -1,0 +1,7 @@
+DATABASE_URL=postgresql+psycopg2://postgres:1234@localhost:5432/AegisVision
+POSTGRES_DB=AegisVision
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=1234
+
+API_KEYS=64f3e1a6524171f84be5770b414eedd838bf6ceb005675c9=streamlit-dashboard
+STREAMLIT_API_KEY=64f3e1a6524171f84be5770b414eedd838bf6ceb005675c9

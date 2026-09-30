@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Depends
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
