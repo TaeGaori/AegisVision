@@ -32,8 +32,6 @@ async def predict_video(file: UploadFile = File(...)):
         os.remove(input_path)
         raise HTTPException(status_code=400, detail=str(e))
 
-    output_path, summary = await run_in_threadpool(process_video, input_path)
-
     os.remove(input_path)
 
     return FileResponse(
