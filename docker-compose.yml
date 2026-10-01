@@ -18,7 +18,7 @@ services:
     volumes:
       - ./runs:/app/runs
       - ./mlflow.db:/app/mlflow.db
-      - ./defense_metrics.josn:/app/defense_metrics.json
+      - ./defense_metrics.json:/app/defense_metrics.json
 
     depends_on:
       db:
@@ -26,12 +26,7 @@ services:
 
     healthcheck:
       test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
-        ]
+        ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -88,28 +83,28 @@ services:
       --server.port=8501
 
 
-  caddy:
-    image: caddy:2-alpine
-    container_name: AegisVision-caddy
+  # caddy:
+  #   image: caddy:2-alpine
+  #   container_name: AegisVision-caddy
 
-    ports:
-      - "80:80"     # ACME(Let's Encrypt) 인증서 발급용 - HTTP로 자동 리다이렉트도 처리
-      - "443:443"
+  #   ports:
+  #     - "80:80"     # ACME(Let's Encrypt) 인증서 발급용 - HTTP로 자동 리다이렉트도 처리
+  #     - "443:443"
 
-    environment:
-      DOMAIN: ${DOMAIN}
+  #   environment:
+  #     DOMAIN: ${DOMAIN}
 
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile
+  #     - caddy_data:/data
+  #     - caddy_config:/config
 
-    depends_on:
-      api:
-        condition: service_healthy
+  #   depends_on:
+  #     api:
+  #       condition: service_healthy
 
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
+  # caddy_data:
+  # caddy_config:

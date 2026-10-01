@@ -63,3 +63,8 @@ app.include_router(training.router, dependencies=[Depends(verify_api_key)])
 app.include_router(video.router, dependencies=[Depends(verify_api_key)])
 app.include_router(alerts.router, dependencies=[Depends(verify_api_key)])
 app.include_router(defense_metrics.router, dependencies=[Depends(verify_api_key)])
+
+
+# export API_KEY=64f3e1a6524171f84be5770b414eedd838bf6ceb005675c9
+# export API_BASE_URL=http://127.0.0.1:8000
+# uv run streamlit run streamlit_app.py

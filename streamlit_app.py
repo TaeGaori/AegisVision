@@ -383,33 +383,38 @@ with tab_training:
 
         st.divider()
         st.markdown("### 📈 종합 학습 결과 (누적)")
-        st.caption("여러 학습 세션을 하나로 이어붙인 전체 진행 추이입니다.")
+        st.caption("단일 클래스(drone)와 다중 클래스(4종) 학습을 각각 이어붙여 비교한 추이입니다.")
 
-        cumulative_metrics = history.get("cumulative_metrics", {})
+        cumulative_by_exp = history.get("cumulative_metrics", {})
+        label_map = {"single_class": "단일 클래스(drone)", "multi_class": "다중 클래스 (4종)"}
 
-        if not cumulative_metrics:
+        metric_labels = {
+            "mAP50": "mAP50",
+            "mAP50_95": "mAP50-95",
+            "precision": "Precision",
+            "recall": "Recall",
+        }
+        available_metrics = sorted({
+            metric_key
+            for exp_metrics in cumulative_by_exp.values()
+            for metric_key in exp_metrics.keys()
+        }, key=lambda k: list(metric_labels.keys()).index(k) if k in metric_labels else 99)
+
+        if not available_metrics:
             st.info("종합 학습 결과 데이터가 없습니다.")
         else:
-            metric_labels = {
-                "mAP50": "mAP50",
-                "mAP50_95": "mAP50-95",
-                "precision": "Precision",
-                "recall": "Recall",
-            }
-            available_metrics = [m for m in metric_labels if m in cumulative_metrics]
-
-            selected = st.multiselect(
+            selected_metric = st.selectbox(
                 "표시할 지표",
                 options=available_metrics,
-                default=[m for m in ["mAP50"] if m in available_metrics] or available_metrics[:1],
                 format_func=lambda m: metric_labels.get(m, m),
             )
 
             frames = []
-            for metric_key in selected:
-                for point in cumulative_metrics.get(metric_key, []):
+            for exp_key, exp_metrics in cumulative_by_exp.items():
+                series_label = label_map.get(exp_key, exp_key)
+                for point in exp_metrics.get(selected_metric, []):
                     frames.append({
-                        "metric": metric_labels.get(metric_key, metric_key),
+                        "series": series_label,
                         "step": point["step"],
                         "value": point["value"],
                     })
@@ -421,15 +426,17 @@ with tab_training:
                     .mark_line(point=True)
                     .encode(
                         x=alt.X("step:Q", title="누적 Epoch"),
-                        y=alt.Y("value:Q", title=None, scale=alt.Scale(domain=[0, 1])),
-                        color=alt.Color("metric:N", title="지표"),
-                        tooltip=["metric:N", "step:Q", "value:Q"],
+                        y=alt.Y("value:Q", title=metric_labels.get(selected_metric, selected_metric),
+                                scale=alt.Scale(domain=[0, 1])),
+                        color=alt.Color("series:N", title="모델 계열"),
+                        tooltip=["series:N", "step:Q", "value:Q"],
                     )
                     .properties(height=350)
                 )
                 st.altair_chart(chart, use_container_width=True)
             else:
                 st.info("선택된 지표의 데이터가 없습니다.")
+                
 with tab_model:
     st.subheader("현재 서빙 모델")
     info, error = get_json("/model/info")

@@ -23,4 +23,4 @@ class TrainingHistoryResponse(BaseModel):
     total_sessions: int
     total_epochs: int
     runs: list[TrainingRun]
-    cumulative_metrics: dict[str, list[CumulativePoint]] = {}
+    cumulative_metrics: dict[str, dict[str,list[CumulativePoint]]] = {}

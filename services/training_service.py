@@ -2,15 +2,15 @@ import mlflow
 from mlflow.tracking import MlflowClient
 
 MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
-EXPERIMENT_NAME = ["drone-detection", "multiclass-detection"]
+EXPERIMENT_NAMES = ["drone-detection", "multiclass-detection"]
 
 # 요약용 run 이름 — 일반 세션 목록에서는 제외하고, 종합 결과로만 사용
 CUMULATIVE_RUN_NAME = "cumulative_summary_v3"
 CUMULATIVE_METRIC_KEYS = {
-    "cumulative_mAP50": "mAP50",
-    "cumulative_mAP50_95": "mAP50_95",
-    "cumulative_precision": "precision",
-    "cumulative_recall": "recall",
+    "mAP50": "metrics/mAP50B",
+    "mAP50_95": "metrics/mAP50-95B",
+    "precision": "metrics/precisionB",
+    "recall": "metrics/recallB",
 }
 
 
@@ -24,19 +24,47 @@ def _get_actual_completed_epochs(client:MlflowClient, run_id:str) -> int:
     history.sort(key=lambda x:x.step)
     return history[-1].step + 1  # step은 0부터 시작하므로 +1
 
-def _get_cumulative_metrics(client: MlflowClient, cumulative_run_id: str | None) -> dict:
-    """cumulative_summary_v3 run에서 지표별 누적 곡선을 뽑아옴"""
-    if cumulative_run_id is None:
+def  _build_cumulative_for_experiment(client: MlflowClient, experiment_name: str) -> dict:
+    """특정 실험 하나의 run들을 시간순으로 이어붙여 지표별 누적 곡선을 만듦"""
+    experiment = client.get_experiment_by_name(experiment_name)
+    if experiment is None:
         return {}
 
+    runs = client.search_runs(
+        experiment_ids=[experiment.experiment_id],
+        order_by=["attributes.start_time ASC"]
+    )
+    # 요약용 run은 원본이 아니라서 제외
+    runs = [r for r in runs if not r.info.run_name.startswith("cumulative_summary")]
+
     result = {}
-    for logged_name, display_key in CUMULATIVE_METRIC_KEYS.items():
-        history = client.get_metric_history(cumulative_run_id, logged_name)
-        history.sort(key=lambda x: x.step)
-        if history:
+    for display_key, auto_logged_name in CUMULATIVE_METRIC_KEYS.items():
+        all_steps = []
+        all_values = []
+        cumulative_offset = 0
+
+        for run in runs:
+            history = client.get_metric_history(run.info.run_id, auto_logged_name)
+            if not history:
+                # 자동 로깅 이름이 없으면 수동 로깅 이름으로 재시도
+                manual_name = display_key.replace("_95", "-95")
+                history = client.get_metric_history(run.info.run_id, manual_name)
+            history.sort(key=lambda x: x.step)
+
+            if not history:
+                continue
+
+            for point in history:
+                all_steps.append(point.step + cumulative_offset)
+                all_values.append(point.value)
+
+            cumulative_offset += history[-1].step + 1
+
+        if all_steps:
             result[display_key] = [
-                {"step": point.step, "value": point.value} for point in history
+                {"step": step, "value": value} for step, value in zip(all_steps,all_values)
             ]
+
     return result
 
 def get_training_history() -> dict:
@@ -44,13 +72,18 @@ def get_training_history() -> dict:
     client = MlflowClient()
 
     experiment_ids = []
-    for name in EXPERIMENT_NAME:
+    for name in EXPERIMENT_NAMES:
         experiment = client.get_experiment_by_name(name)
         if experiment is not None:
             experiment_ids.append(experiment.experiment_id)
 
     if not experiment_ids:
-        return {"total_sessions": 0, "total_epochs": 0, "runs": [], "cumulative_metrics": {}}
+        return {
+            "total_sessions": 0, 
+            "total_epochs": 0, 
+            "runs": [], 
+            "cumulative_metrics": {"single_class": {}, "multi_class":{}}
+            }
 
     runs = client.search_runs(
         experiment_ids=experiment_ids,
@@ -59,12 +92,9 @@ def get_training_history() -> dict:
 
     result_runs = []
     total_epochs = 0
-    cumulative_run_id = None
 
     for run in runs:
         if run.info.run_name.startswith("cumulative_summary"):
-            if run.info.run_name == CUMULATIVE_RUN_NAME:
-                cumulative_run_id = run.info.run_id 
             continue
 
         metrics = run.data.metrics
@@ -90,7 +120,10 @@ def get_training_history() -> dict:
             "started_at": str(run.info.start_time)
         })
 
-    cumulative_metrics = _get_cumulative_metrics(client, cumulative_run_id)
+    cumulative_metrics = {
+        "single_class": _build_cumulative_for_experiment(client, "drone-detection"),
+        "multi_class": _build_cumulative_for_experiment(client, "multiclass-detection"),
+    }
 
     return{
         "total_sessions": len(result_runs),

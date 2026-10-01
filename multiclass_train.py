@@ -6,6 +6,9 @@ def main():
     mlflow.set_tracking_uri("sqlite:///mlflow.db")
     mlflow.set_experiment("multiclass-detection")
 
+
+    # uv run yolo settings mlflow=True 실행하고 학습시키기!!
+    
     model = YOLO('yolo26n.pt')
 
     EPOCHS = 50
@@ -34,3 +37,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
