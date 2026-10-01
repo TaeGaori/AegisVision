@@ -1,3 +1,7 @@
+import os
+os.environ["MLFLOW_TRACKING_URI"] = "sqlite:///mlflow.db"
+os.environ["MLFLOW_EXPERIMENT_NAME"] = "multiclass-detection"
+
 from ultralytics import YOLO
 import mlflow
 
@@ -11,7 +15,7 @@ def main():
     
     model = YOLO('yolo26n.pt')
 
-    EPOCHS = 50
+    EPOCHS = 100
     IMGSZ = 640
     PATIENCE = 15
 
