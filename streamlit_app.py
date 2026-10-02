@@ -394,6 +394,13 @@ with tab_training:
             "precision": "Precision",
             "recall": "Recall",
         }
+
+        metric_descriptions = {
+            "mAP50": "박스 위치가 50% 이상 겹치면 맞춘 것으로 보는 종합 탐지 성능",
+            "mAP50_95": "박스 위치를 더 엄격한 기준(50~95%)까지 평균 낸 정밀한 탐지 성능",
+            "precision": "탐지라고 예측한 것 중 실제로 맞은 비율 (오탐이 적을수록 높음)",
+            "recall": "실제 존재하는 객체를 놓치지 않고 찾아낸 비율 (미탐이 적을수록 높음)",
+        }
         available_metrics = sorted({
             metric_key
             for exp_metrics in cumulative_by_exp.values()
@@ -408,6 +415,7 @@ with tab_training:
                 options=available_metrics,
                 format_func=lambda m: metric_labels.get(m, m),
             )
+            st.caption(metric_descriptions.get(selected_metric, ""))
 
             frames = []
             for exp_key, exp_metrics in cumulative_by_exp.items():
