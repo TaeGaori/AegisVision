@@ -1,3 +1,5 @@
+from fastapi.middleware.cors import CORSMiddleware
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -46,6 +48,14 @@ app.add_middleware(SlowAPIMiddleware)
 
 # 모든 요청/응답을 audit_logs 테이블에 기록
 register_audit_middleware(app)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Detection-Summary"],
+)
 
 
 @app.get("/")
