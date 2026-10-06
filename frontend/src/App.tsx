@@ -1,13 +1,22 @@
 import { useState } from "react"
+import type { ComponentType } from "react"
 
 import { Sidebar } from "@/components/Sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TABS } from "@/lib/tabs"
 import type { TabKey } from "@/lib/tabs"
+import { AlertsPage } from "@/pages/Alerts"
+import { DashboardPage } from "@/pages/Dashboard"
+
+const PAGES: Partial<Record<TabKey, ComponentType>> = {
+  dashboard: DashboardPage,
+  alerts:AlertsPage,
+}
 
 export default function App() {
-  const [active, setActive] = useState<TabKey>("dashboard")
+  const [active, setActive] = useState<TabKey>("alerts")
   const current = TABS.find((tab) => tab.key === active)!
+  const Page = PAGES[active]
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -16,14 +25,20 @@ export default function App() {
       <main className="flex-1 p-8">
         <h1 className="text-2xl font-semibold">{current.label}</h1>
 
-        <Card className="mt-6 max-w-xl">
-          <CardHeader>
-            <CardTitle>{current.label}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-             이 탭의 화면은 다음 단게에서 구현합니다.
-          </CardContent>
-        </Card>
+        <div className="mt-6">
+          {Page ? (
+            <Page />
+          ) : (
+            <Card className="max-w-xl">
+              <CardHeader>
+                <CardTitle>{current.label}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                이 탭의 화면은 다음 단계에서 구현합니다.
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </main>
     </div>
   )

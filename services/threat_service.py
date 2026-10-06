@@ -1,11 +1,11 @@
 THREAT_RULES = {
     "Drone": {"base": 3},
-    "helicopter": {"base": 2},
+    "Helicopter": {"base": 2},
     "Airplane": {"base": 1},
     "Bird": {"base": 0},
 }
 
-def calculate_threat_leavel(class_name: str, confidence: float) -> str:
+def calculate_threat_level(class_name: str, confidence: float) -> str:
     base = THREAT_RULES.get(class_name, {"base": 1})["base"]
 
     if base == 0:
