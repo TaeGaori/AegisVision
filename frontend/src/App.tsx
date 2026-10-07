@@ -7,16 +7,24 @@ import { TABS } from "@/lib/tabs"
 import type { TabKey } from "@/lib/tabs"
 import { AlertsPage } from "@/pages/Alerts"
 import { DashboardPage } from "@/pages/Dashboard"
+import { DetectPage } from "@/pages/Detect"
+import { ModelPage } from "@/pages/ModelInfo"
+import { TrainingPage } from "@/pages/Training"
+
 
 const PAGES: Partial<Record<TabKey, ComponentType>> = {
   dashboard: DashboardPage,
-  alerts:AlertsPage,
+  alerts: AlertsPage,
+  detect: DetectPage,
+  model: ModelPage,
+  training: TrainingPage,
 }
 
 export default function App() {
   const [active, setActive] = useState<TabKey>("alerts")
   const current = TABS.find((tab) => tab.key === active)!
   const Page = PAGES[active]
+
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">

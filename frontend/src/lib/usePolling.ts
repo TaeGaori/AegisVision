@@ -30,8 +30,7 @@ export function usePolling<T>(path: string, intervalMs = 10000): PollingState<T>
         }
 
         load()
-        const timer = setInterval(load, intervalMs)
-
+        const timer = intervalMs > 0 ? setInterval(load, intervalMs) : undefined
         return () => {
             cancelled = true
             clearInterval(timer)

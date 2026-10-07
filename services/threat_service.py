@@ -24,3 +24,4 @@ def calculate_threat_level(class_name: str, confidence: float) -> str:
     elif score == 1:
         return "medium"
     return "low"
+
