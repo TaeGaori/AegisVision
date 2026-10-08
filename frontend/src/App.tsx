@@ -10,12 +10,14 @@ import { DashboardPage } from "@/pages/Dashboard"
 import { DetectPage } from "@/pages/Detect"
 import { ModelPage } from "@/pages/ModelInfo"
 import { TrainingPage } from "@/pages/Training"
+import { VideoPage } from "./pages/Video"
 
 
 const PAGES: Partial<Record<TabKey, ComponentType>> = {
   dashboard: DashboardPage,
   alerts: AlertsPage,
   detect: DetectPage,
+  video: VideoPage,
   model: ModelPage,
   training: TrainingPage,
 }
