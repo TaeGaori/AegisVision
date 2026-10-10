@@ -52,8 +52,8 @@ export function DashboardPage() {
     return (
         <div className="flex flex-col gap-6">
             <div className="grid max-w-4xl grid-cols-2 gap-4 lg:grid-cols-4">
-                <Stat label="총 요청 수" value={m.total_requests.toLocaleString()} />
-                <Stat label="총 탐지 수" value={m.total_detections.toLocaleString()} />
+                <Stat label="이미지 탐지 요청 수" value={m.total_requests.toLocaleString()} />
+                <Stat label="이미지 탐지 수" value={m.total_detections.toLocaleString()} />
                 <Stat label="평균 신뢰도" value={(m.avg_confidence * 100).toFixed(1)} unit="%" />
                 <Stat label="평균 추론 시간" value={m.avg_inference_time_ms.toFixed(1)} unit="ms" />
             </div>

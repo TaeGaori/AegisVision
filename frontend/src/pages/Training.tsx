@@ -2,6 +2,8 @@ import { Stat } from "@/components/Stat"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { usePolling } from "@/lib/usePolling"
 import { cn } from "@/lib/utils"
+import { TrainingChart } from "@/components/TrainingChart"
+import type { Cumulative } from "@/components/TrainingChart"
 
 type Run = {
     run_name: string
@@ -19,6 +21,7 @@ type TrainingHistory = {
     total_sessions: number
     total_epochs: number
     runs: Run[]
+    cumulative_metrics: Cumulative
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -63,6 +66,8 @@ export function TrainingPage() {
                 <Stat label="총 에폭" value={data.total_epochs} />
                 <Stat label="최고 mAP50 (완료된 학습)" value={bestMap50} tone="text-primary" />
             </div>
+
+            <TrainingChart data={data.cumulative_metrics} />
 
             <Card>
                 <CardHeader>

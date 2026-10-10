@@ -60,27 +60,19 @@ services:
 
   web:
     build:
-      context: .
-      dockerfile: Dockerfile.streamlit
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_API_KEY: ${REACT_API_KEY}
 
-    container_name: AegisVision-streamlit
-
+    container_name: AegisVision-web
 
     ports:
-      - "8501:8501"
-
-    environment:
-      API_BASE_URL: http://api:8000
-      API_KEY: ${STREAMLIT_API_KEY}
+      - "8080:80"
 
     depends_on:
       api:
         condition: service_healthy
-
-    command: >
-      streamlit run streamlit_app.py
-      --server.address=0.0.0.0
-      --server.port=8501
 
 
   # caddy:

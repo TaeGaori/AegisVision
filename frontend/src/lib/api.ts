@@ -38,3 +38,12 @@ export async function apiPostFileForBlob(path: string, file: File): Promise<Blob
     const response = await postFile(path, file)
     return response.blob()
 }
+<<<<<<< HEAD
+=======
+
+export async function apiPostFileWithHeaders(path: string, file: File): Promise<{ blob: Blob; headers: Headers }> {
+    const response = await postFile(path, file)
+    const blob = await response.blob()
+    return { blob, headers: response.headers}
+}
+>>>>>>> 749a35c0d50894e74e472eed7d84b9f89beef3a8
