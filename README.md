@@ -17,7 +17,8 @@
 | 실험 관리 | MLflow |
 | 백엔드 API | FastAPI |
 | 데이터베이스 | PostgreSQL + SQLAlchemy ORM |
-| 프론트엔드 대시보드 | Streamlit |
+| 프론트엔드 대시보드 | React + TypeScript (Vite), Tailwind CSS v4, shadcn/ui, recharts, nginx |
+| (구) 대시보드 | Streamlit (React로 대체, 참고용으로 코드 유지) |
 | 인증 | API Key (X-API-Key), JWT (관리자 로그인) |
 | Rate Limiting | slowapi |
 | 컨테이너화 | Docker, Docker Compose |
@@ -30,28 +31,20 @@
 ## 아키텍처
 
 ```
-                  ┌─────────────┐
-                  │   Caddy     │  (HTTPS, 80/443)
-                  │ (reverse    │
-                  │  proxy)     │
-                  └──────┬──────┘
-                         │
-                  ┌──────▼──────┐
-       ┌──────────┤   FastAPI   │──────────┐
-       │          │  (api:8000) │          │
-       │          └──────┬──────┘          │
-       │                 │                 │
-┌──────▼──────┐   ┌──────▼──────┐   ┌──────▼──────┐
-│   YOLO      │   │ PostgreSQL  │   │   MLflow    │
-│ (모델 추론)  │   │  (탐지/감사  │   │  (학습 이력  │
-│             │   │   로그)     │   │   추적)     │
-└─────────────┘   └─────────────┘   └─────────────┘
-                         ▲
-                  ┌──────┴──────┐
-                  │  Streamlit  │  (web:8501)
-                  │  (대시보드)  │
-                  └─────────────┘
+브라우저 ──▶ web (nginx, :8080) ──┬─▶ React 빌드 결과(정적 파일) 서빙
+                                  └─▶ /api/*  ──▶ api (FastAPI, :8000, 내부 전용)
+                                                      │
+                          ┌───────────────────────────┼───────────────────────┐
+                    ┌─────▼─────┐              ┌──────▼──────┐          ┌─────▼─────┐
+                    │   YOLO    │              │ PostgreSQL  │          │  MLflow   │
+                    │ (모델 추론)│              │(탐지/감사 로그)│          │(학습 이력) │
+                    └───────────┘              └─────────────┘          └───────────┘
+
+(운영 배포 시에는 Caddy가 앞단에서 HTTPS를 처리하도록 구성 가능 - docker-compose.yml에 주석으로 포함)
 ```
+
+- 브라우저는 **8080 포트 하나**만 접근합니다. 백엔드(8000)는 호스트에 열지 않고, nginx가 `/api/` 요청만 `api` 컨테이너로 전달합니다.
+- 화면과 API가 같은 주소(출처)로 보이므로 배포 환경에서는 CORS 설정이 필요 없습니다.
 
 FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services/`) · 모델(`models/`) 레이어로 분리된 구조로 설계했습니다.
 
@@ -127,20 +120,31 @@ FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services
 - 관리자 로그인은 JWT 기반이며, 로그인 엔드포인트에는 slowapi로 요청 빈도 제한을 적용해 무차별 대입 공격을 방지
 - 운영 환경에서는 Caddy가 HTTPS를 처리하고, FastAPI 포트는 외부에 직접 노출하지 않는 구조 (로컬 테스트 시에는 Caddy 없이 구성 가능)
 
-### 8. 프론트엔드 대시보드 (Streamlit)
+### 8. 프론트엔드 대시보드 (React)
 
-- 🔍 객체 탐지: 이미지 업로드 → 탐지 결과 이미지 + 표 표시
-- 🎥 비디오 탐지: 비디오 업로드 → 프레임별 탐지 결과 영상과 클래스별 탐지 횟수 표시
-- 📊 운영 대시보드: `/metrics`, `/metrics/defense` 기반 운영 지표 및 방산 스타일 성능 지표 시각화
-- 📈 학습 이력: 세션별 성능 비교 표, 단일/다중 클래스 각각의 누적 학습 추이 그래프(계열별 색상 구분)
-- ⚙️ 모델 정보: 현재 서빙 중인 모델의 클래스 목록 표시
-- 🚨 경보: 고위험 탐지 목록 표시
+기존 Streamlit 대시보드를 **관제센터(NOC) 스타일의 React 대시보드**로 새로 만들었습니다. 백엔드는 그대로 두고 `frontend/` 폴더를 추가했습니다. (기술: React 19 + TypeScript + Vite, Tailwind CSS v4, shadcn/ui, lucide-react, recharts)
+
+| 탭 | 기능 | 사용하는 API |
+|---|---|---|
+| 운영 대시보드 | 요청·탐지 수, 평균 신뢰도·추론 시간, 처리 속도, 엔드포인트별 요청/클래스별 탐지 차트 | `GET /metrics`, `GET /metrics/defense` |
+| 경보 | 고위험 탐지 목록, 위협 등급별 색상 (10초마다 갱신) | `GET /alerts` |
+| 객체 탐지 | 이미지 업로드 → 원본, 박스가 그려진 결과 이미지, 클래스별 신뢰도 막대 | `POST /predict`, `POST /predict/visualize` |
+| 비디오 탐지 | 영상 업로드(최대 50MB) → 처리 경과 시간, 결과 영상 재생·다운로드, 프레임 요약 | `POST /predict/video` |
+| 학습 이력 | 학습 실행 기록 표, 단일/다중 클래스 누적 학습 곡선 (mAP50 / mAP50-95 / precision / recall 선택) | `GET /model/training-history` |
+| 모델 정보 | 모델 파일, 탐지 클래스 목록 | `GET /model/info` |
+
+- 사이드바 하단에서 10초마다 `/health`를 호출해 **API 상태와 모델 로드 여부**를 표시합니다.
+- API 호출은 `lib/api.ts`로, 주기적 갱신은 `lib/usePolling.ts` 커스텀 훅으로 공통화했습니다. (변하지 않는 값은 간격 0으로 한 번만 호출)
+- 영상 탐지는 대시보드의 요청 수·평균 추론 시간에 포함하지 않습니다. 평균 추론 시간은 이미지 한 장 기준 지표인데 영상은 처리 시간이 훨씬 길어 평균이 왜곡되기 때문이며, 대신 영상 탭에서 자체 요약(총 프레임, 탐지 프레임 수, 클래스별 횟수)을 제공합니다. 대시보드 라벨도 "이미지 탐지 요청 수 / 이미지 탐지 수"로 명시했습니다.
+- 기존 Streamlit 코드(`streamlit_app.py`, `Dockerfile.streamlit`)는 참고용으로 남겨두었으며 현재 `docker-compose.yml`에서는 사용하지 않습니다.
 
 ### 9. 컨테이너화 (Docker)
 
-- `api`(FastAPI) · `db`(PostgreSQL) · `web`(Streamlit) · `caddy`(리버스 프록시, 선택) 구성
+- `api`(FastAPI) · `db`(PostgreSQL) · `web`(React 빌드 + nginx) · `caddy`(리버스 프록시, 선택) 구성
+- `web`은 멀티 스테이지 빌드: Node 이미지에서 `npm run build` → 결과물만 가벼운 nginx 이미지로 복사
+- nginx가 `/api/` 요청을 `api:8000`으로 프록시 (업로드 최대 60MB, 프록시 대기 600초로 설정 - 기본값 1MB/60초면 이미지도 413, 긴 영상은 504로 실패)
 - 모델 가중치(`runs/`), MLflow 기록(`mlflow.db`), 방산 지표(`defense_metrics.json`)는 volume으로 마운트해 코드와 분리 관리
-- `docker-compose up --build` 한 번으로 전체 스택 기동
+- `docker-compose up --build` 한 번으로 전체 스택 기동 (`api`가 healthy가 된 뒤 `web`이 시작되도록 `depends_on: service_healthy` 적용)
 
 ### 10. CI/CD (GitHub Actions)
 
@@ -156,15 +160,34 @@ FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services
 
 ## 실행 방법
 
+### A. Docker로 전체 실행 (권장)
+
 ```bash
-# 1. 프로젝트 루트에 .env 파일을 만들고 아래 항목을 채워주세요
+# 1. 환경 변수 파일 만들기 (예시 파일을 복사)
+cp .env.example .env
+# .env 안의 CHANGE_ME_ 값을 모두 직접 만든 값으로 교체합니다. (키 생성 예: openssl rand -hex 24)
+grep -n "CHANGE_ME" .env        # 아무것도 출력되지 않으면 모두 교체된 것
+
+# 2. 전체 스택 기동 (반드시 프로젝트 루트에서 실행)
+docker-compose up --build -d
+docker-compose ps               # api, db는 healthy, web은 Up
+
+# 3. 확인
+# React 대시보드: http://localhost:8080
+```
+
+`.env`에 들어가는 항목:
+
+```dotenv
 POSTGRES_DB=AegisVision
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=실제_비밀번호
 DATABASE_URL=postgresql+psycopg2://postgres:실제_비밀번호@db:5432/AegisVision
 
-API_KEYS=발급한_키=streamlit-dashboard
-STREAMLIT_API_KEY=발급한_키               # API_KEYS와 동일한 값
+# 서버가 허용하는 키 목록: "키=클라이언트이름"을 콤마로 연결 (공백 없음)
+API_KEYS=<streamlit키>=streamlit-dashboard,<react키>=react-dashboard
+STREAMLIT_API_KEY=<streamlit키>     # API_KEYS에 등록된 키와 동일
+REACT_API_KEY=<react키>             # API_KEYS에 등록된 키와 동일, React 빌드 시 화면 코드에 포함
 
 DEFAULT_ADMIN_USERNAME=admin
 DEFAULT_ADMIN_PASSWORD=실제_비밀번호
@@ -173,16 +196,27 @@ JWT_SECRET_KEY=랜덤으로_생성한_긴_문자열
 JWT_EXPIRE_MINUTES=60
 
 DOMAIN=example.duckdns.org          # 실제 도메인 배포 시에만 필요
-
-# 2. 전체 스택 기동
-docker-compose up --build
-
-# 3. 확인
-# FastAPI: http://localhost:8000/docs
-# Streamlit: http://localhost:8501
 ```
 
-**로컬에서 테스트만 돌리고 싶다면**
+- 클라이언트(Streamlit/React)마다 키를 따로 발급해 서버 허용 목록(`API_KEYS`)에 등록합니다. 감사 로그(`audit_logs`)에서 **어느 화면이 호출했는지** 구분할 수 있습니다.
+- `VITE_`로 시작하는 값은 **빌드 시점에 화면 코드에 고정**됩니다. `.env`의 키를 바꾸면 `docker-compose up --build -d`로 `web`을 다시 빌드하고, 브라우저는 `Ctrl+F5`로 새로고침하세요.
+
+### B. 로컬 개발 (프론트엔드 수정 시)
+
+터미널 2개를 사용합니다. Node 20.19 이상이 필요합니다.
+
+| 터미널 | 폴더 | 명령 |
+|---|---|---|
+| 백엔드 | 프로젝트 루트 | `docker-compose up -d db` 후 `uv run uvicorn main:app --reload` |
+| 프론트 | `frontend/` | `cp .env.local.example .env.local` → `npm install` → `npm run dev` |
+
+접속: http://localhost:5173 (개발 모드는 백엔드 8000 포트에 직접 연결하며, 백엔드 CORS가 5173을 허용하도록 설정되어 있습니다)
+
+- `frontend/.env.local`의 `VITE_API_KEY`는 서버 `API_KEYS`에 등록된 키여야 합니다. 수정하면 `npm run dev`를 껐다 켜야 반영됩니다.
+- `npm` 명령은 `frontend/`에서, `docker-compose` 명령은 프로젝트 루트에서 실행합니다.
+- 다른 컴퓨터에서 이어서 작업할 때는 `git pull` → `cd frontend` → `npm install` 후, 그 컴퓨터 백엔드의 키로 `.env.local`을 새로 만듭니다. (`.env`, `.env.local`은 git에 올라가지 않습니다)
+
+### C. 테스트만 실행
 
 ```bash
 uv sync
@@ -313,11 +347,77 @@ uv run pytest -v
 - **원인**: OpenCV 기본 코덱(`mp4v`)으로 인코딩된 영상이 대부분의 웹 브라우저(HTML5 video)와 호환되지 않음
 - **해결방법**: 코덱을 브라우저 호환성이 좋은 `avc1`(H.264)로 변경
 
+### 21. 화면에서는 "API 연결 실패"인데 curl은 정상 (CORS)
+- **시도**: React 개발 서버(`localhost:5173`)에서 백엔드(`localhost:8000`)의 API 호출
+- **문제점**: 터미널의 curl은 성공하는데 브라우저에서는 요청이 막혀 "API 연결 실패"가 표시됨
+- **원인**: 화면(5173)과 API(8000)의 포트가 달라 브라우저가 서로 다른 출처로 보고 CORS 정책으로 차단. curl에는 이 정책이 없음. 또한 영상 요약을 담은 커스텀 헤더(`X-Detection-Summary`)는 서버가 노출을 허용하지 않으면 화면 코드에서 읽을 수 없음
+- **해결방법**: 백엔드에 `CORSMiddleware`를 추가해 5173 출처를 허용하고 `expose_headers=["X-Detection-Summary"]` 설정. 에러 응답에도 CORS 헤더가 붙도록 다른 미들웨어보다 나중에(가장 바깥에) 추가. Docker 배포에서는 nginx `/api` 프록시로 같은 출처가 되어 CORS가 필요 없음
+
+### 22. shadcn/ui 초기화 실패 (경로 별칭 · Tailwind 설정 인식 불가)
+- **시도**: `npx shadcn init`으로 UI 컴포넌트 라이브러리 설치
+- **문제점**: "No import alias found", "No Tailwind CSS configuration found" 오류
+- **원인**: shadcn은 `tsconfig`의 `paths`(`@/*` 별칭)와 CSS 파일의 `@import "tailwindcss"`를 보고 프로젝트를 판단하는데, 둘 다 설정되어 있지 않았음. 또한 최신 TypeScript에서는 `baseUrl`이 deprecated 되어 경고 발생
+- **해결방법**: `tsconfig.json`과 `tsconfig.app.json`에 `paths` 추가(`baseUrl`은 제거), `vite.config.ts`에 동일한 `@` 별칭 추가, `index.css`에 `@import "tailwindcss"` 추가 후 재실행
+
+### 23. 다른 컴퓨터에서 curl이 실패하고 React가 401을 반환
+- **시도**: 집과 학원 컴퓨터를 오가며 같은 프로젝트에서 작업
+- **문제점**: 한 컴퓨터에서는 되던 API 호출이 다른 컴퓨터에서는 `Connection refused`, JSON 파싱 오류, 401로 실패
+- **원인**: (1) 그 컴퓨터에서 백엔드가 실행 중이지 않았음 (2) `.env`와 `frontend/.env.local`은 git에 올라가지 않아 컴퓨터마다 따로 있고, 컴퓨터마다 서버의 API 키가 달랐음
+- **해결방법**: 백엔드를 먼저 기동(필요 시 `docker-compose up -d db`)하고, 그 컴퓨터 `.env`의 `API_KEYS`에 등록된 키로 `frontend/.env.local`을 새로 작성. 키가 맞는지는 값을 출력하지 않고 상태 코드만 확인
+  ```bash
+  key=$(grep '^REACT_API_KEY=' .env | cut -d= -f2- | tr -d '\r')
+  curl -s -o /dev/null -w "HTTP %{http_code}\n" -H "X-API-Key: $key" http://localhost:8080/api/metrics
+  ```
+
+### 24. Docker의 web 컨테이너가 nginx 대신 Streamlit을 실행하려 함
+- **시도**: 기존 `web`(Streamlit) 서비스 정의를 React/nginx 이미지로 교체
+- **문제점**: 이미지를 바꿨는데도 컨테이너가 정상 기동하지 않음
+- **원인**: compose의 `command`는 이미지의 기본 실행 명령(nginx)을 덮어쓰는데, 이전 Streamlit용 `command`/`environment`가 남아 있었음
+- **해결방법**: `web` 서비스에서 `command`, `environment`를 삭제하고 `build`(context·args), `ports: 8080:80`, `depends_on`만 남김
+
+### 25. `frontend/` 폴더에서 docker-compose를 실행해 환경 변수가 비어 있음
+- **시도**: 프론트엔드 폴더에서 `docker-compose up --build` 실행
+- **문제점**: `${REACT_API_KEY}` 같은 값이 빈 문자열로 치환되어 빌드가 의도와 다르게 동작
+- **원인**: compose는 실행한 위치(프로젝트 디렉터리)의 `.env`를 읽어 변수를 치환하는데, `.env`는 프로젝트 루트에만 있음
+- **해결방법**: `docker-compose`는 항상 프로젝트 루트에서 실행
+
+### 26. 키를 바꿨는데도 화면에서 계속 401
+- **시도**: `.env`의 `REACT_API_KEY`를 수정하고 컨테이너만 재시작
+- **문제점**: 대시보드에 "지표를 불러오지 못했습니다(HTTP 401)" 표시
+- **원인**: Vite의 `VITE_*` 환경 변수는 서버 실행 시점이 아니라 **빌드 시점**에 번들 코드에 문자열로 박힘. 컨테이너 재시작만으로는 이미 빌드된 코드의 키가 바뀌지 않음. 또한 `.env` 키가 서버 `API_KEYS`에 등록되어 있지 않아도 401
+- **해결방법**: `REACT_API_KEY`가 `API_KEYS`에 `키=이름` 형태로 등록되어 있는지 확인한 뒤 `docker-compose up --build -d`로 `web` 재빌드, 브라우저는 `Ctrl+F5`
+
+### 27. Docker 빌드가 TypeScript 오류로 실패
+- **시도**: `docker-compose up --build`로 React 이미지 빌드
+- **문제점**: 로컬 `npm run dev`에서는 잘 보이던 코드가 Docker 빌드 단계에서 실패
+- **원인**: 빌드 명령(`npm run build` = `tsc -b && vite build`)은 개발 서버보다 타입 검사가 엄격해, 타입으로만 쓰는 import(`import type` 필요), 사용하지 않는 변수 등이 오류가 됨
+- **해결방법**: 이미지를 빌드하기 전에 `frontend/`에서 `npm run build`를 먼저 실행해 오류를 로컬에서 잡음
+
+### 28. 업로드 413 오류, 긴 영상 처리 시 504 오류
+- **시도**: nginx 프록시를 거쳐 이미지·영상을 업로드
+- **문제점**: 1MB가 넘는 파일은 `413`, 처리에 60초가 넘는 영상은 `504`로 실패
+- **원인**: nginx 기본값이 요청 본문 최대 1MB, 프록시 응답 대기 60초
+- **해결방법**: `nginx.conf`에 `client_max_body_size 60m`, `proxy_read_timeout 600s`, `proxy_send_timeout 600s` 설정
+
+### 29. 영상 탐지 후에도 대시보드의 총 요청 수가 늘지 않음
+- **시도**: 영상 탐지를 실행한 뒤 대시보드의 "총 요청 수" 확인
+- **문제점**: 영상을 처리해도 숫자가 그대로
+- **원인**: `/metrics`는 `detection_requests` 테이블의 행을 집계하는데, 영상 엔드포인트는 해당 테이블에 기록하지 않는 설계. 영상까지 기록하면 이미지 한 장 기준인 평균 추론 시간이 왜곡됨
+- **해결방법**: 설계를 유지하고 대시보드 라벨을 "이미지 탐지 요청 수 / 이미지 탐지 수"로 변경해 의미를 명확히 함
+
+### 30. Helicopter 위협 등급이 한 단계 낮게 나옴
+- **시도**: 헬리콥터를 높은 신뢰도로 탐지해 경보 등급 확인
+- **문제점**: 규칙상 나와야 할 등급보다 한 단계 낮게 판정됨
+- **원인**: 모델이 내보내는 클래스명은 `Helicopter`(대문자 시작)인데, 위협 규칙 딕셔너리의 키는 소문자였음. 딕셔너리 조회는 대소문자를 구분하므로 규칙을 찾지 못하고 기본값으로 처리됨
+- **해결방법**: 규칙 키를 `"Helicopter"`로 수정. 이미 저장된 과거 경보는 저장 당시 등급을 유지하므로 새 탐지부터 반영됨
+
 ## 향후 개선 방향 (Future Work)
 
 - **실시간 스트림 처리**: RTSP/웹캠 입력을 받아 WebSocket 기반으로 실시간 프레임을 처리하고, ByteTrack 등으로 프레임 간 객체 추적(tracking)까지 지원하는 구조로 확장
 - **실제 도메인 배포**: 현재 Caddy + 리버스 프록시 구조는 준비되어 있으나, 실제 도메인을 연결한 라이브 배포는 아직 진행하지 않음
 - **MLflow Model Registry 연동**: 현재 모델 경로를 코드에 직접 지정하는 방식을 Model Registry 기반의 버전 관리·배포 방식으로 전환
+- **API 키를 화면 코드에서 제거**: 현재 `VITE_API_KEY`는 빌드 결과물에 포함되어 브라우저 개발자 도구로 볼 수 있습니다. 시연용으로는 충분하지만, 실서비스라면 이미 구현된 JWT 로그인(`/auth/login`)을 화면에 연결해 키를 화면에 두지 않는 구조로 전환해야 합니다.
+- **프론트엔드 개선**: 영상 처리 중 탭을 이동해도 결과가 유지되도록 상태를 상위로 올리기, 학습 곡선 스무딩/세션 경계 표시, 서버가 그린 이미지 대신 bbox 좌표로 브라우저에서 박스 그리기, 영상 결과 임시 파일 자동 삭제
 - **웹훅/이메일 알림**: 현재 경보 체계는 조회(`/alerts`) 방식이며, 고위험 탐지 발생 시 외부로 실시간 알림을 보내는 기능은 범위에서 제외
 
 ## 프로젝트 구조
@@ -367,20 +467,30 @@ AegisVision/
 ├── runs/detect/              # 학습된 모델 가중치
 ├── main.py                   # FastAPI 진입점
 ├── database.py                # DB 연결 및 세션
-├── streamlit_app.py            # Streamlit 대시보드
+├── streamlit_app.py            # (구) Streamlit 대시보드 - 참고용
 ├── multiclass_train.py          # 다중 클래스 학습 스크립트
 ├── resume_multiclass.py          # 다중 클래스 이어서 학습
 ├── drone_train.py                 # 단일 클래스 학습 스크립트 (초기 버전)
 ├── defense_metrics.json
 ├── mlflow.db
 ├── Dockerfile
-├── Dockerfile.streamlit
+├── Dockerfile.streamlit         # (구) Streamlit 이미지 - 현재 compose에서는 미사용
+├── .env.example                 # 환경 변수 예시 (복사해서 .env 생성)
 ├── docker-compose.yml
 ├── Caddyfile
 ├── requirements.txt
 ├── requirements-streamlit.txt
 ├── pyproject.toml
 ├── uv.lock
+├── frontend/                  # React 대시보드
+│   ├── Dockerfile             # Node 빌드 → nginx 서빙 (멀티 스테이지)
+│   ├── nginx.conf             # 정적 파일 + /api 프록시
+│   ├── .env.local.example     # 로컬 개발용 환경 변수 예시
+│   └── src/
+│       ├── App.tsx            # 탭 → 화면 대응표
+│       ├── pages/             # Dashboard, Alerts, Detect, Video, Training, ModelInfo
+│       ├── components/        # Sidebar, ApiStatus, Stat, CountBarChart, TrainingChart, ui/
+│       └── lib/               # api.ts(요청 함수), usePolling.ts(주기 호출 훅)
 ├── .gitignore
 └── README.md
 ```
