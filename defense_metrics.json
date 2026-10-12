@@ -1,13 +1,57 @@
 {
   "low_fpr_recall": {
-    "conf_threshold": 0.3,
-    "precision": 0.964533772503299,
-    "recall": 0.9758333951329652
+    "conf_threshold": 0.223,
+    "precision": 0.9501,
+    "recall": 0.9829
   },
   "fps_benchmark": {
     "sample_size": 100,
-    "elapsed_sec": 1.27,
-    "fps": 78.75
+    "elapsed_sec": 4.57,
+    "fps": 21.9,
+    "inference_only_fps": 26.26,
+    "mean_inference_ms": 38.08,
+    "conf": 0.5
   },
-  "model_path": "runs/detect/train_multiclass/weights/best.pt"
+  "model_path": "runs/detect/train_multiclass/weights/best.pt",
+  "recall_at_precision": {
+    "target_precision": 0.95,
+    "all_classes_mean": {
+      "conf_threshold": 0.223,
+      "precision": 0.9501,
+      "recall": 0.9829
+    },
+    "drone_only": {
+      "conf_threshold": 0.136,
+      "precision": 0.9519,
+      "recall": 0.9956
+    },
+    "fixed_conf_points": [
+      {
+        "conf_threshold": 0.25,
+        "precision": 0.953,
+        "recall": 0.9811,
+        "drone_precision": 0.9725,
+        "drone_recall": 0.9912
+      },
+      {
+        "conf_threshold": 0.5,
+        "precision": 0.9746,
+        "recall": 0.9743,
+        "drone_precision": 0.9886,
+        "drone_recall": 0.9823
+      },
+      {
+        "conf_threshold": 0.75,
+        "precision": 0.9877,
+        "recall": 0.9038,
+        "drone_precision": 0.9977,
+        "drone_recall": 0.9475
+      }
+    ]
+  },
+  "environment": {
+    "device": "cpu",
+    "ultralytics": "8.4.166",
+    "torch": "2.5.1+cu121"
+  }
 }

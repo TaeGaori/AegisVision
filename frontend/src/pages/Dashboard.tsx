@@ -27,7 +27,7 @@ type Defense = {
 
 export function DashboardPage() {
     const metrics = usePolling<Metrics>("/metrics")
-    const defense = usePolling<Defense>("/metrics/defensc", 30000)
+    const defense = usePolling<Defense>("/metrics/defense", 30000)
 
     if (metrics.error && !metrics.data) {
         return (

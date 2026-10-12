@@ -1,6 +1,7 @@
 # POST /predict, POST /predict/visualize 엔드포인트
 
 from fastapi import APIRouter, UploadFile, File, Depends
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from PIL import Image
@@ -16,14 +17,20 @@ from services.upload_validation import validate_and_read_upload
 
 router = APIRouter()
 
+def _infer_and_save(db:Session, image_bytes: bytes, filename: str, endpoint: str):
+    """추론 + DB 저장을 한 덩어리로 묶어 스레드풀에서 실행하기 위한 동기 함수"""
+    result, inference_time_ms = process_image_bytes(image_bytes)
+    detections = parse_detections(result)
+    save_detection_result(db, filename, endpoint, inference_time_ms, detections)
+    return result, detections
+
+
 @router.post('/predict', response_model=PredictResponse)
 async def predict(file: UploadFile = File(...), db:Session = Depends(get_db)):
     image_bytes = await validate_and_read_upload(file)
-    result, inference_time_ms = process_image_bytes(image_bytes)
-
-    detections = parse_detections(result)
-    save_detection_result(db, file.filename, 'predict', inference_time_ms, detections)
-
+    _, detections = await run_in_threadpool(
+        _infer_and_save, db, image_bytes, file.filename, 'predict'
+    )
     return PredictResponse(filename=file.filename, detections=detections)
 
 
@@ -32,16 +39,18 @@ async def predict(file: UploadFile = File(...), db:Session = Depends(get_db)):
              responses={200:{"content":{"image/jpeg": {}}, "description":"객체 탐지 결과 이미지"}})
 async def predict_visualize(file: UploadFile = File(...), db:Session=Depends(get_db)):
     image_bytes = await validate_and_read_upload(file)
-    result, inference_time_ms = process_image_bytes(image_bytes)
+    result, _ = await run_in_threadpool(
+        _infer_and_save, db, image_bytes, file.filename, 'predict_visualize'
+    )
 
-    detections = parse_detections(result)
-    save_detection_result(db, file.filename, 'predict_visualize', inference_time_ms, detections)
+    # 박스 그리기
+    def _render() -> io.BytesIO:
+        plotted = result.plot() # BGR numpy 배열
+        img = Image.fromarray(plotted[..., ::-1])   # BGR -> RGB  [..., ::-1] -> 높이, 너비, 채널
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+        buf.seek(0)
+        return buf
 
-    plotted = result.plot()
-    plotted_rgb = Image.fromarray(plotted[..., ::-1])
-
-    buf = io.BytesIO()
-    plotted_rgb.save(buf, format="JPEG")
-    buf.seek(0)
-
+    buf = await run_in_threadpool(_render)
     return StreamingResponse(buf, media_type='image/jpeg')

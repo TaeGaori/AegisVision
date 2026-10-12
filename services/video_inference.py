@@ -6,9 +6,16 @@ from services.model_manager import model_manager
 
 MAX_DURATION_SEC = 60   # 1분
 
+def _remove_quietly(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
 def _reencode_to_h264(raw_path: str) -> str:
     """OpenCV가 쓴 영상을 브라우저 호환 H.264(libx264)로 재인코딩"""
-    final_path = tempfile.mktemp(suffix=".mp4")
+    fd, final_path = tempfile.mkstemp(suffix=".mp4")
+    os.close(fd)    # OpenCV가 경로로 다시 열기 때문에 우리가 쥔 번호는 닫는다
     try:
         subprocess.run(
             [
@@ -24,9 +31,14 @@ def _reencode_to_h264(raw_path: str) -> str:
             timeout=120,
         )
     except subprocess.CalledProcessError as e:
+        _remove_quietly(final_path) # 실패한 결과 파일이 남지 않게 정리
         raise ValueError(f"비디오 재인코딩 실패: {e.stderr.decode(errors='ignore')[:300]}")
+    except subprocess.TimeoutExpired:
+        # 예외가 처리되어 500에러 + 임시파일 누수 문제 삭제
+        _remove_quietly(final_path)
+        raise ValueError("비디오 재인코딩 시간이 초과되었습니다. (120초)")
     finally:
-        os.remove(raw_path)  # 원본(mp4v) 임시 파일은 정리
+        _remove_quietly(raw_path)   # 원본(mp4) 임시 파일은 삭제
 
     return final_path
 
@@ -45,38 +57,45 @@ def process_video(input_path: str) -> tuple[str, dict]:
         cap.release()
         raise ValueError(f'비디오 길이는 {MAX_DURATION_SEC}초를 초과할 수 없습니다.')
 
-    raw_path = tempfile.mktemp(suffix=".mp4")
+    fd, raw_path = tempfile.mkstemp(suffix=".mp4")
+    os.close(fd)
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(raw_path, fourcc, fps, (width,height))
 
     if not writer.isOpened():
         cap.release()
+        _remove_quietly(raw_path)
         raise ValueError(f"비디오 writer를 열 수 없습니다 (코덱 문제일 수 있음): {raw_path}")
 
     total_frames = 0
     frames_with_detection = 0
     class_counts= {}
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        total_frames +=1
+    try:
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                total_frames +=1
 
-        results = model.predict(frame, conf=0.5, verbose=False)
-        result = results[0]
+                results = model.predict(frame, conf=0.5, verbose=False)
+                result = results[0]
 
-        if len(result.boxes) > 0:
-            frames_with_detection += 1
-            for box in result.boxes:
-                cls_name = result.names[int(box.cls)]
-                class_counts[cls_name] = class_counts.get(cls_name, 0) +1
+                if len(result.boxes) > 0:
+                    frames_with_detection += 1
+                    for box in result.boxes:
+                        cls_name = result.names[int(box.cls)]
+                        class_counts[cls_name] = class_counts.get(cls_name, 0) +1
 
-        plotted = result.plot()
-        writer.write(plotted)
-
-    cap.release()
-    writer.release()
+                plotted = result.plot()
+                writer.write(plotted)
+        finally:
+            cap.release()
+            writer.release()
+    except BaseException:
+        _remove_quietly(raw_path)
+        raise
 
     output_path = _reencode_to_h264(raw_path)
 

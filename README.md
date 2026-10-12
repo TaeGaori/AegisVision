@@ -1,6 +1,6 @@
 # 🛰️ AegisVision — 드론 탐지 MLOps 파이프라인
 
-드론(안티드론) 객체 탐지 모델을 학습부터 배포·모니터링까지 자동화된 파이프라인으로 구축한 MLOps 포트폴리오 프로젝트입니다. 단순히 모델을 학습시키는 데서 그치지 않고, 학습 → 실험 추적 → API 서빙 → 데이터베이스 로깅 → 인증/보안 → 컨테이너화 → CI/CD까지 실제 운영 가능한 시스템 형태로 구현하는 것을 목표로 했습니다.
+안티드론 객체 탐지 모델(YOLO)의 학습·실험 추적(MLflow)·API 서빙(FastAPI)·운영 모니터링(감사 로그/지표/경보 대시보드)까지 end-to-end로 구현한 포트폴리오 프로젝트입니다. 단순히 모델을 학습시키는 데서 그치지 않고, 학습 → 실험 추적 → API 서빙 → 데이터베이스 로깅 → 인증/보안 → 컨테이너화 → CI/CD까지 실제 운영 가능한 시스템 형태로 구현하는 것을 목표로 했습니다.
 
 ## 프로젝트 배경
 
@@ -13,7 +13,7 @@
 
 | 영역 | 기술 |
 |---|---|
-| 객체 탐지 모델 | YOLO (Ultralytics) |
+| 객체 탐지 모델 | YOLO26 (Ultralytics) |
 | 실험 관리 | MLflow |
 | 백엔드 API | FastAPI |
 | 데이터베이스 | PostgreSQL + SQLAlchemy ORM |
@@ -64,11 +64,13 @@ FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services
 ### 1. 데이터셋 & 모델 학습
 
 - Roboflow Universe의 "Drone Detection data set" (단일 클래스, 약 3.3k 이미지)으로 시작
-- YOLO(ultralytics)를 사전학습 가중치 기반 전이학습 방식으로 학습
+- YOLO26(Ultralytics)를 사전학습 가중치(`yolo26n.pt`) 기반 전이학습 방식으로 학습
 - 학습이 여러 컴퓨터·여러 세션에 걸쳐 나뉘어 진행되었으며(약 13 → 5 → 10 → 40 epoch 등), 각 세션의 가중치(`last.pt`)를 이어받아 누적 학습
-- 단일 클래스 모델 성능: mAP50 약 0.93, precision 약 0.91, recall 약 0.90
+- 단일 클래스 모델 성능: mAP50 약 0.93, precision 약 0.91, recall 약 0.90 (검증 세트 기준)
 - 오탐(강아지를 드론으로 오인) 사례를 확인하고, Airplane/Bird/Drone/Helicopter 4클래스 데이터셋(Roboflow Universe)으로 확장
-- CPU 학습(epoch당 약 25분)의 한계를 GPU(RTX 3070, CUDA) 전환으로 해결, 다중 클래스 모델 최종 성능: mAP50 약 0.99, precision 약 0.97, recall 약 0.97
+- CPU 학습(epoch당 약 25분)의 한계를 GPU(RTX 3070, CUDA) 전환으로 해결, 다중 클래스 모델 최종 성능: mAP50 약 0.99, precision 약 0.97, recall 약 0.97 (검증 세트 기준)
+- 4클래스로 확장한 뒤, 강아지를 드론으로 오탐하던 사례가 줄어든 것을 확인
+- 단일 클래스와 다중 클래스 모델은 서로 다른 데이터셋의 검증 세트로 평가한 값이라, 두 수치를 직접 비교하기는 어려움
 
 ### 2. 실험 추적 (MLflow)
 
@@ -87,7 +89,7 @@ FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services
 | GET | `/health` | 서버·모델 상태 확인 (인증 불필요, healthcheck용) |
 | GET | `/model/info` | 현재 서빙 중인 모델의 경로·클래스 정보 |
 | GET | `/metrics` | 총 요청 수, 평균 confidence, 평균 추론 시간 등 운영 지표 |
-| GET | `/metrics/defense` | 방산 스타일 성능 지표 (낮은 오탐율에서의 Recall, FPS, 클래스별 탐지 분포) |
+| GET | `/metrics/defense` | 방산 스타일 성능 지표 (precision 0.95 이상 유지 시 Recall, FPS, 클래스별 탐지 분포) |
 | GET | `/model/training-history` | MLflow 학습 이력 및 단일/다중 클래스 누적 성능 추이 |
 | GET | `/alerts` | 위협 등급(threat_level)이 high/critical인 최근 탐지 목록 |
 | POST | `/auth/login` | 관리자 로그인 (JWT 발급) |
@@ -109,8 +111,13 @@ FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services
 
 ### 6. 방산 스타일 성능 지표
 
-- 보안/국방 시스템 평가에서 흔히 쓰이는 지표로 평가 지표를 보강: 낮은 오탐율(precision 기준)에서의 Recall, 초당 처리 프레임(FPS)
-- `scripts/evaluate_defense_metrics.py`로 오프라인에서 계산해 `defense_metrics.json`으로 저장, API가 이 파일을 읽어 응답
+- 오탐 억제가 중요한 보안/국방 시스템을 염두에 두고 평가 지표를 보강: precision 0.95 이상을 유지할 때의 Recall, 초당 처리 프레임(FPS)
+- 객체 탐지에는 FPR 계산에 필요한 TN(정답 없음을 맞힌 수)이 없어, FPR 대신 precision을 기준으로 오탐 수준을 정의
+- `scripts/evaluate_defense_metrics.py`가 검증 세트를 한 번 평가한 뒤 신뢰도별 precision/recall 곡선에서 값을 읽어 `defense_metrics.json`으로 저장, API가 이 파일을 읽어 응답
+- 측정 결과 (검증 세트 기준)
+  - precision 0.95 이상을 유지할 때 Recall: 4클래스 평균 약 0.98, Drone 클래스 약 0.996
+  - 신뢰도 0.5에서 precision 약 0.97, recall 약 0.97 (4클래스 평균)
+  - 처리 속도: CPU(Intel i7-8700) 기준 약 22 FPS (이미지 읽기 포함, 모델 추론만 약 26 FPS)
 - 클래스별 탐지 분포(`class_distribution`)는 DB에 쌓인 실제 탐지 로그를 집계해 실시간으로 제공
 
 ### 7. 인증 & 보안
@@ -410,12 +417,6 @@ uv run pytest -v
 - **문제점**: 규칙상 나와야 할 등급보다 한 단계 낮게 판정됨
 - **원인**: 모델이 내보내는 클래스명은 `Helicopter`(대문자 시작)인데, 위협 규칙 딕셔너리의 키는 소문자였음. 딕셔너리 조회는 대소문자를 구분하므로 규칙을 찾지 못하고 기본값으로 처리됨
 - **해결방법**: 규칙 키를 `"Helicopter"`로 수정. 이미 저장된 과거 경보는 저장 당시 등급을 유지하므로 새 탐지부터 반영됨
-
-### 31. 컴퓨터마다 MLflow 버전이 달라 학습 이력 API가 실패
-- **시도**: 다른 컴퓨터에서 만든 `mlflow.db`를 가져와 학습 이력 탭(`/model/training-history`) 확인
-- **문제점**: 학습 이력 API만 500 오류. `Detected out-of-date database schema (found version …, expected …)`가 발생하고, 안내대로 `mlflow db upgrade`를 실행하면 `Can't locate revision identified by '…'`로 다시 실패 (`/health` 등 다른 API는 정상)
-- **원인**: MLflow는 버전이 바뀌면 DB 구조 버전도 바뀌는데, DB가 더 새로운 MLflow로 만들어져 이 컴퓨터에 설치된 옛 버전은 그 구조 버전을 알지 못함. 오류 문구의 "out-of-date"만 보고 DB가 옛날 것이라고 판단했지만, 실제로는 설치된 라이브러리가 더 옛날 버전이었음
-- **해결방법**: DB를 올리는 대신 이 컴퓨터의 MLflow를 올려 버전을 맞춤 (`uv lock --upgrade-package mlflow` 후 `uv sync`). `uv.lock`, `pyproject.toml`, Docker용 `requirements.txt`의 MLflow 버전을 같은 값으로 맞추고, 다른 컴퓨터에서는 `git pull` 후 `uv sync`. DB를 업그레이드하면 옛 버전에서는 열리지 않으므로 모든 환경의 버전을 먼저 통일하는 것이 안전
 
 ## 향후 개선 방향 (Future Work)
 
