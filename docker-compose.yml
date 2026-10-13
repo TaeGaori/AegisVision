@@ -36,9 +36,6 @@ services:
     image: postgres:17
     container_name: AegisVision_db
 
-    ports:
-      - "5432:5432"
-
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -68,7 +65,7 @@ services:
     container_name: AegisVision-web
 
     ports:
-      - "8080:80"
+      - "80:80"
 
     depends_on:
       api:
