@@ -24,7 +24,7 @@ def save_detection_result(
         )
         db.add(db_request)
 
-        # SQL을 보내서 id를 받아오되 트랜잭션은 아직 안 끝남
+        # SQL을 보내서 id를 받아오되 트랜잭션은 아직 안 끝남(원자성 유지)
         db.flush()
 
         for d in detections:
