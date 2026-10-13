@@ -8,13 +8,12 @@
 - 방산·보안 업계에서 실제로 다뤄지는 "안티드론(counter-drone) 탐지" 주제를 선택해 도메인 관련성을 확보
 - YOLO, MLflow, FastAPI, PostgreSQL, Docker를 활용하여 약 한 달간 단계적으로 학습하며 구현
 - 학습 과정에서 겪은 문제와 해결 과정을 아래 트러블슈팅 섹션에 상세히 기록
-- 개발 과정에서 Claude(Cowork)의 도움을 받았습니다. 제안받은 코드는 복사·붙여넣기 하지 않고 직접 입력하며 동작 원리를 학습했고, 트러블슈팅 항목 중에는 원인 분석과 해결 방법을 AI의 설명으로 확인한 경우가 있으며 그 내용을 이해한 뒤 적용했습니다.
 
 ## 기술 스택
 
 | 영역 | 기술 |
 |---|---|
-| 객체 탐지 모델 | YOLO26 (Ultralytics) |
+| 객체 탐지 모델 | YOLO (Ultralytics) |
 | 실험 관리 | MLflow |
 | 백엔드 API | FastAPI |
 | 데이터베이스 | PostgreSQL + SQLAlchemy ORM |
@@ -23,7 +22,8 @@
 | 인증 | API Key (X-API-Key), JWT (관리자 로그인) |
 | Rate Limiting | slowapi |
 | 컨테이너화 | Docker, Docker Compose |
-| 리버스 프록시 / HTTPS | Caddy |
+| 리버스 프록시 / HTTPS | nginx (화면 + /api 프록시), Caddy (HTTPS, 선택) |
+| 서버 배포 | AWS Lightsail (Ubuntu, Docker Compose) |
 | CI/CD | GitHub Actions |
 | 테스트 | pytest |
 | 패키지 관리 | uv |
@@ -32,7 +32,7 @@
 ## 아키텍처
 
 ```
-브라우저 ──▶ web (nginx, :8080) ──┬─▶ React 빌드 결과(정적 파일) 서빙
+브라우저 ──▶ web (nginx, :80) ──┬─▶ React 빌드 결과(정적 파일) 서빙
                                   └─▶ /api/*  ──▶ api (FastAPI, :8000, 내부 전용)
                                                       │
                           ┌───────────────────────────┼───────────────────────┐
@@ -44,7 +44,7 @@
 (운영 배포 시에는 Caddy가 앞단에서 HTTPS를 처리하도록 구성 가능 - docker-compose.yml에 주석으로 포함)
 ```
 
-- 브라우저는 **8080 포트 하나**만 접근합니다. 백엔드(8000)는 호스트에 열지 않고, nginx가 `/api/` 요청만 `api` 컨테이너로 전달합니다.
+- 브라우저는 **80 포트 하나**만 접근합니다. 백엔드(8000)는 호스트에 열지 않고, nginx가 `/api/` 요청만 `api` 컨테이너로 전달합니다.
 - 화면과 API가 같은 주소(출처)로 보이므로 배포 환경에서는 CORS 설정이 필요 없습니다.
 
 FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services/`) · 모델(`models/`) 레이어로 분리된 구조로 설계했습니다.
@@ -65,13 +65,11 @@ FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services
 ### 1. 데이터셋 & 모델 학습
 
 - Roboflow Universe의 "Drone Detection data set" (단일 클래스, 약 3.3k 이미지)으로 시작
-- YOLO26(Ultralytics)를 사전학습 가중치(`yolo26n.pt`) 기반 전이학습 방식으로 학습
+- YOLO(ultralytics)를 사전학습 가중치 기반 전이학습 방식으로 학습
 - 학습이 여러 컴퓨터·여러 세션에 걸쳐 나뉘어 진행되었으며(약 13 → 5 → 10 → 40 epoch 등), 각 세션의 가중치(`last.pt`)를 이어받아 누적 학습
-- 단일 클래스 모델 성능: mAP50 약 0.93, precision 약 0.91, recall 약 0.90 (검증 세트 기준)
+- 단일 클래스 모델 성능: mAP50 약 0.93, precision 약 0.91, recall 약 0.90
 - 오탐(강아지를 드론으로 오인) 사례를 확인하고, Airplane/Bird/Drone/Helicopter 4클래스 데이터셋(Roboflow Universe)으로 확장
-- CPU 학습(epoch당 약 25분)의 한계를 GPU(RTX 3070, CUDA) 전환으로 해결, 다중 클래스 모델 최종 성능: mAP50 약 0.99, precision 약 0.97, recall 약 0.97 (검증 세트 기준)
-- 4클래스로 확장한 뒤, 강아지를 드론으로 오탐하던 사례가 줄어든 것을 확인
-- 단일 클래스와 다중 클래스 모델은 서로 다른 데이터셋의 검증 세트로 평가한 값이라, 두 수치를 직접 비교하기는 어려움
+- CPU 학습(epoch당 약 25분)의 한계를 GPU(RTX 3070, CUDA) 전환으로 해결, 다중 클래스 모델 최종 성능: mAP50 약 0.99, precision 약 0.97, recall 약 0.97
 
 ### 2. 실험 추적 (MLflow)
 
@@ -90,7 +88,7 @@ FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services
 | GET | `/health` | 서버·모델 상태 확인 (인증 불필요, healthcheck용) |
 | GET | `/model/info` | 현재 서빙 중인 모델의 경로·클래스 정보 |
 | GET | `/metrics` | 총 요청 수, 평균 confidence, 평균 추론 시간 등 운영 지표 |
-| GET | `/metrics/defense` | 방산 스타일 성능 지표 (precision 0.95 이상 유지 시 Recall, FPS, 클래스별 탐지 분포) |
+| GET | `/metrics/defense` | 방산 스타일 성능 지표 (낮은 오탐율에서의 Recall, FPS, 클래스별 탐지 분포) |
 | GET | `/model/training-history` | MLflow 학습 이력 및 단일/다중 클래스 누적 성능 추이 |
 | GET | `/alerts` | 위협 등급(threat_level)이 high/critical인 최근 탐지 목록 |
 | POST | `/auth/login` | 관리자 로그인 (JWT 발급) |
@@ -112,13 +110,8 @@ FastAPI는 라우터(`routers/`) · 스키마(`schemas/`) · 서비스(`services
 
 ### 6. 방산 스타일 성능 지표
 
-- 오탐 억제가 중요한 보안/국방 시스템을 염두에 두고 평가 지표를 보강: precision 0.95 이상을 유지할 때의 Recall, 초당 처리 프레임(FPS)
-- 객체 탐지에는 FPR 계산에 필요한 TN(정답 없음을 맞힌 수)이 없어, FPR 대신 precision을 기준으로 오탐 수준을 정의
-- `scripts/evaluate_defense_metrics.py`가 검증 세트를 한 번 평가한 뒤 신뢰도별 precision/recall 곡선에서 값을 읽어 `defense_metrics.json`으로 저장, API가 이 파일을 읽어 응답
-- 측정 결과 (검증 세트 기준)
-  - precision 0.95 이상을 유지할 때 Recall: 4클래스 평균 약 0.98, Drone 클래스 약 0.996
-  - 신뢰도 0.5에서 precision 약 0.97, recall 약 0.97 (4클래스 평균)
-  - 처리 속도: CPU(Intel i7-8700) 기준 약 22 FPS (이미지 읽기 포함, 모델 추론만 약 26 FPS)
+- 보안/국방 시스템 평가에서 흔히 쓰이는 지표로 평가 지표를 보강: 낮은 오탐율(precision 기준)에서의 Recall, 초당 처리 프레임(FPS)
+- `scripts/evaluate_defense_metrics.py`로 오프라인에서 계산해 `defense_metrics.json`으로 저장, API가 이 파일을 읽어 응답
 - 클래스별 탐지 분포(`class_distribution`)는 DB에 쌓인 실제 탐지 로그를 집계해 실시간으로 제공
 
 ### 7. 인증 & 보안
@@ -181,7 +174,7 @@ docker-compose up --build -d
 docker-compose ps               # api, db는 healthy, web은 Up
 
 # 3. 확인
-# React 대시보드: http://localhost:8080
+# React 대시보드: http://localhost  (80 포트가 이미 사용 중이면 docker-compose.yml의 web ports를 "8080:80"으로 바꾸고 http://localhost:8080)
 ```
 
 `.env`에 들어가는 항목:
@@ -230,6 +223,53 @@ DOMAIN=example.duckdns.org          # 실제 도메인 배포 시에만 필요
 uv sync
 uv run pytest -v
 ```
+
+### D. AWS Lightsail 배포
+
+Docker Compose 구성을 그대로 AWS Lightsail(Ubuntu) 인스턴스에 올려 `http://서버IP`로 접속할 수 있도록 배포했습니다.
+
+**배포 시 고려한 점**
+
+| 항목 | 내용 |
+|---|---|
+| 인스턴스 크기 | YOLO(torch) + PostgreSQL + nginx를 함께 올리고 Docker 빌드 중에는 메모리를 더 쓰므로 4GB급 이상 권장, 빌드 중 부족을 막기 위해 스왑 2GB 추가 |
+| 추론 환경 | 서버에는 GPU가 없어 CPU로 추론합니다. 이미지 한 장도 로컬(RTX 3070)보다 오래 걸리며 영상 탐지는 특히 느립니다. 시연은 로컬, 배포본은 접속 확인용으로 사용 |
+| 방화벽 | HTTP(80)만 열고 SSH(22)는 내 IP로 제한, DB(5432)와 API(8000)는 열지 않음. compose에서도 `db`의 호스트 포트를 제거하고 `web`만 `80:80`으로 노출 |
+| 키 분리 | 서버의 API 키, DB 비밀번호, JWT 비밀키는 로컬과 다른 새 값으로 서버에서 직접 생성 (`openssl rand -hex 24`) |
+| 접속 방식 | 도메인 없이 `http://서버IP`. HTTPS(Caddy)는 도메인이 필요해 적용하지 않음 |
+
+**배포 순서**
+
+```bash
+# 1. 인스턴스 생성 (Ubuntu LTS, 4GB 이상) → 고정 IP 연결 → 방화벽: HTTP(80) 허용, SSH는 내 IP만
+# 2. 서버 접속 후 Docker 설치
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER        # 재접속해야 적용됨
+
+# 3. 스왑 2GB 추가 (빌드 중 메모리 부족 방지)
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+
+# 4. 코드 받기
+git clone <저장소 주소> && cd AegisVision
+
+# 5. git에 없는 파일은 내 컴퓨터에서 scp로 업로드 (경로는 동일하게)
+#    runs/detect/train_multiclass/weights/best.pt, mlflow.db, defense_metrics.json
+
+# 6. 서버에서 .env 작성 (.env.example 복사 후 CHANGE_ME를 새 값으로 교체)
+cp .env.example .env && nano .env
+grep -n "CHANGE_ME" .env             # 아무것도 출력되지 않아야 함
+
+# 7. 빌드 및 실행
+docker compose up --build -d
+docker compose ps                    # api, db는 healthy, web은 0.0.0.0:80->80
+```
+
+- 파일 마운트(`./mlflow.db`, `./defense_metrics.json`)는 서버에 파일이 없으면 Docker가 같은 이름의 빈 폴더를 만들어 버리므로 **5번을 먼저** 한 뒤 실행합니다.
+- `API_KEYS`에는 `REACT_API_KEY`와 같은 키가 `키=react-dashboard` 형태로 등록되어 있어야 하며, 키를 바꾼 뒤에는 화면 코드에 키가 고정되므로 `web`을 다시 빌드합니다.
+- 설정이 어긋나지 않도록 서버에서 파일을 직접 고치지 않고, 로컬에서 수정 → `git push` → 서버에서 `git pull` → `docker compose up --build -d` 순서로 반영합니다.
+- 확인: 서버 안에서 `curl -s -o /dev/null -w "HTTP %{http_code}\n" -H "X-API-Key: $key" http://localhost/api/metrics`가 `HTTP 200`이면 정상입니다.
+- 평가가 끝나면 인스턴스를 중지하거나 삭제합니다 (켜 두는 동안 요금이 발생).
 
 ## 주요 트러블슈팅
 
@@ -374,14 +414,14 @@ uv run pytest -v
 - **해결방법**: 백엔드를 먼저 기동(필요 시 `docker-compose up -d db`)하고, 그 컴퓨터 `.env`의 `API_KEYS`에 등록된 키로 `frontend/.env.local`을 새로 작성. 키가 맞는지는 값을 출력하지 않고 상태 코드만 확인
   ```bash
   key=$(grep '^REACT_API_KEY=' .env | cut -d= -f2- | tr -d '\r')
-  curl -s -o /dev/null -w "HTTP %{http_code}\n" -H "X-API-Key: $key" http://localhost:8080/api/metrics
+  curl -s -o /dev/null -w "HTTP %{http_code}\n" -H "X-API-Key: $key" http://localhost/api/metrics
   ```
 
 ### 24. Docker의 web 컨테이너가 nginx 대신 Streamlit을 실행하려 함
 - **시도**: 기존 `web`(Streamlit) 서비스 정의를 React/nginx 이미지로 교체
 - **문제점**: 이미지를 바꿨는데도 컨테이너가 정상 기동하지 않음
 - **원인**: compose의 `command`는 이미지의 기본 실행 명령(nginx)을 덮어쓰는데, 이전 Streamlit용 `command`/`environment`가 남아 있었음
-- **해결방법**: `web` 서비스에서 `command`, `environment`를 삭제하고 `build`(context·args), `ports: 8080:80`, `depends_on`만 남김
+- **해결방법**: `web` 서비스에서 `command`, `environment`를 삭제하고 `build`(context·args), `ports: 80:80`, `depends_on`만 남김
 
 ### 25. `frontend/` 폴더에서 docker-compose를 실행해 환경 변수가 비어 있음
 - **시도**: 프론트엔드 폴더에서 `docker-compose up --build` 실행
@@ -419,10 +459,28 @@ uv run pytest -v
 - **원인**: 모델이 내보내는 클래스명은 `Helicopter`(대문자 시작)인데, 위협 규칙 딕셔너리의 키는 소문자였음. 딕셔너리 조회는 대소문자를 구분하므로 규칙을 찾지 못하고 기본값으로 처리됨
 - **해결방법**: 규칙 키를 `"Helicopter"`로 수정. 이미 저장된 과거 경보는 저장 당시 등급을 유지하므로 새 탐지부터 반영됨
 
+### 31. 컴퓨터마다 MLflow 버전이 달라 학습 이력 API가 실패
+- **시도**: 다른 컴퓨터에서 만든 `mlflow.db`를 가져와 학습 이력 탭(`/model/training-history`) 확인
+- **문제점**: 학습 이력 API만 500 오류. `Detected out-of-date database schema (found version …, expected …)`가 발생하고, 안내대로 `mlflow db upgrade`를 실행하면 `Can't locate revision identified by '…'`로 다시 실패 (`/health` 등 다른 API는 정상)
+- **원인**: MLflow는 버전이 바뀌면 DB 구조 버전도 바뀌는데, DB가 더 새로운 MLflow로 만들어져 이 컴퓨터에 설치된 옛 버전은 그 구조 버전을 알지 못함. 오류 문구의 "out-of-date"만 보고 DB가 옛날 것이라고 판단했지만, 실제로는 설치된 라이브러리가 더 옛날 버전이었음
+- **해결방법**: DB를 올리는 대신 이 컴퓨터의 MLflow를 올려 버전을 맞춤 (`uv lock --upgrade-package mlflow` 후 `uv sync`). `uv.lock`, `pyproject.toml`, Docker용 `requirements.txt`의 MLflow 버전을 같은 값으로 맞추고, 다른 컴퓨터에서는 `git pull` 후 `uv sync`. DB를 업그레이드하면 옛 버전에서는 열리지 않으므로 모든 환경의 버전을 먼저 통일하는 것이 안전
+
+### 32. 서버에서 curl이 `HTTP 000`, 포트가 옛날 설정 그대로 열림
+- **시도**: Lightsail 서버에서 `http://localhost/api/metrics`로 배포 확인
+- **문제점**: 컨테이너는 모두 정상(healthy)인데 `HTTP 000`이 나옴. `docker compose ps`를 보니 `web`이 `8080->80`, `db`가 `5432->5432`로 열려 있었음
+- **원인**: `HTTP 000`은 서버가 응답하지 않고 연결 자체가 안 됐다는 뜻(인증 실패는 401). 로컬에서 `docker-compose.yml`(`web`을 `80:80`으로, `db` 포트 삭제)을 고치고 커밋·push 하지 않아, 서버에는 옛날 파일이 클론되어 있었음
+- **해결방법**: 로컬에서 커밋 후 `git push`, 서버에서 `git pull` (서버에서 직접 고친 파일이 있으면 `git checkout <파일>`로 되돌린 뒤 pull) → `docker compose up --build -d`. 이후 서버는 직접 수정하지 않고 로컬 수정 → push → pull 흐름으로만 반영
+
+### 33. 두 컴퓨터에서 같은 파일을 고쳐 `git pull`에서 병합 충돌
+- **시도**: 집과 학원 컴퓨터에서 `api.ts` 끝부분에 각각 함수를 추가한 뒤 `git pull`
+- **문제점**: 파일에 `<<<<<<<`, `=======`, `>>>>>>>` 표시가 들어가고 TypeScript 오류가 발생
+- **원인**: 같은 파일의 같은 위치를 서로 다르게 고쳐 git이 자동으로 합치지 못해 충돌 표시를 남김
+- **해결방법**: 어느 쪽이 필요한지 확인(한쪽은 비어 있고 다른 쪽에 `Video.tsx`가 쓰는 `apiPostFileWithHeaders`가 있었음) 후 해당 변경을 수락하고 표시 줄을 모두 삭제. `grep -rn "<<<<<<<\|>>>>>>>" frontend/src`로 남은 표시가 없는지 확인하고 `git add` → `git commit`
+
 ## 향후 개선 방향 (Future Work)
 
 - **실시간 스트림 처리**: RTSP/웹캠 입력을 받아 WebSocket 기반으로 실시간 프레임을 처리하고, ByteTrack 등으로 프레임 간 객체 추적(tracking)까지 지원하는 구조로 확장
-- **실제 도메인 배포**: 현재 Caddy + 리버스 프록시 구조는 준비되어 있으나, 실제 도메인을 연결한 라이브 배포는 아직 진행하지 않음
+- **도메인 + HTTPS**: AWS Lightsail에 `http://서버IP`로 배포까지는 완료했으나, 도메인을 연결하고 Caddy로 HTTPS를 적용하는 단계는 아직 진행하지 않음. HTTP에서는 키와 업로드 이미지가 암호화 없이 전송되므로 실서비스에는 HTTPS 필수
 - **MLflow Model Registry 연동**: 현재 모델 경로를 코드에 직접 지정하는 방식을 Model Registry 기반의 버전 관리·배포 방식으로 전환
 - **API 키를 화면 코드에서 제거**: 현재 `VITE_API_KEY`는 빌드 결과물에 포함되어 브라우저 개발자 도구로 볼 수 있습니다. 시연용으로는 충분하지만, 실서비스라면 이미 구현된 JWT 로그인(`/auth/login`)을 화면에 연결해 키를 화면에 두지 않는 구조로 전환해야 합니다.
 - **프론트엔드 개선**: 영상 처리 중 탭을 이동해도 결과가 유지되도록 상태를 상위로 올리기, 학습 곡선 스무딩/세션 경계 표시, 서버가 그린 이미지 대신 bbox 좌표로 브라우저에서 박스 그리기, 영상 결과 임시 파일 자동 삭제
